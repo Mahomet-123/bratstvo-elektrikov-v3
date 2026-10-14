@@ -55,7 +55,45 @@ function Objects_update(id, patch) {
   ];
   updateRow(CONFIG.SHEET_OBJECTS, r.__row, row);
   syncObjectSheet(id);
-  return stripRow_(r);
+  return Objects_get(id);
+}
+
+// Удаление объекта (только руководитель): строки расчёта/закупки/визитов,
+// запись в архиве, отдельный лист объекта и саму строку объекта.
+function deleteRowsByObjectId(sheetName, id) {
+  var rows = readRows(sheetName, 1);
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i].objectId) === String(id)) {
+      try { deleteRow(sheetName, rows[i].__row); } catch (e) {}
+    }
+  }
+}
+
+function Objects_delete(id, by) {
+  var meta = Objects_get(id);
+  if (meta) {
+    try {
+      var ss = SS();
+      var sh = ss.getSheetByName(meta.sheet);
+      if (sh) ss.deleteSheet(sh);
+    } catch (e) {}
+    try {
+      SS().getSheets().forEach(function (s) {
+        if (/^Архив_\d{4}$/.test(s.getName())) {
+          var data = s.getDataRange().getValues();
+          for (var ri = data.length - 1; ri >= 1; ri--) {
+            if (String(data[ri][0]) === String(id)) { s.deleteRow(ri + 1); }
+          }
+        }
+      });
+    } catch (e) {}
+  }
+  deleteRowsByObjectId(CONFIG.SHEET_CALC, id);
+  deleteRowsByObjectId(CONFIG.SHEET_PURCHASE, id);
+  deleteRowsByObjectId(CONFIG.SHEET_VISITS, id);
+  var r = findRow(CONFIG.SHEET_OBJECTS, 'id', id);
+  if (r) deleteRow(CONFIG.SHEET_OBJECTS, r.__row);
+  return { ok: true, deleted: id };
 }
 
 function Objects_setStatus(id, status, by) {

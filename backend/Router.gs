@@ -126,6 +126,13 @@ function Router_handle(e) {
         var res = Archive_close(Number(p.id), u.login);
         return json_({ ok: true, result: res });
       }
+      case 'objects:delete': {
+        var u = Router_user(p.token);
+        if (!u) return json_({ ok: false, error: 'Нужна авторизация' });
+        if (!Router_isAdmin(u, p.token)) return json_({ ok: false, error: 'Только руководитель' });
+        var del = Objects_delete(Number(p.id), u.login);
+        return json_({ ok: true, result: del });
+      }
       case 'records:add': {
         var u = Router_user(p.token);
         if (!u) return json_({ ok: false, error: 'Нужна авторизация' });

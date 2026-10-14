@@ -26,7 +26,7 @@ function Records_calcAdd(objectId, line) {
 function Records_calcList(objectId) {
   return readRows(CONFIG.SHEET_CALC, 1)
     .filter(function (r) { return String(r.objectId) === String(objectId); })
-    .map(stripRow_);
+    .map(function (r) { var o = stripRow_(r); o.__row = r.__row; return o; });
 }
 
 function Records_calcUpdate(objectId, rowNum, patch) {
@@ -98,7 +98,7 @@ function Purchases_add(objectId, p) {
 function Purchases_list(objectId) {
   return readRows(CONFIG.SHEET_PURCHASE, 1)
     .filter(function (r) { return String(r.objectId) === String(objectId); })
-    .map(stripRow_);
+    .map(function (r) { var o = stripRow_(r); o.__row = r.__row; return o; });
 }
 
 // Удаление позиции закупки по номеру строки листа

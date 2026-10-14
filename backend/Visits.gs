@@ -16,7 +16,7 @@ function Visits_add(objectId, v) {
 function Visits_list(objectId) {
   return readRows(CONFIG.SHEET_VISITS, 1)
     .filter(function (r) { return String(r.objectId) === String(objectId); })
-    .map(stripRow_);
+    .map(function (r) { var o = stripRow_(r); o.__row = r.__row; return o; });
 }
 
 // Дубликаты дней не блокируем, но помечаем «изменено на другом устройстве»

@@ -1,0 +1,12 @@
+{
+  "name": "bratstvo-elektrikov-v3",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PWA «Братство Электриков» — учёт работ и закупок бригады электриков",
+  "scripts": {
+    "gas:push": "clasp push --force",
+    "gas:deploy": "clasp deploy -i AKfycbyKu6vKUx7jihgcPfX-xg3QPaM9--E64qQQ8OewnRPqcoSSHETGTzRKMvIaEIANCm6y6w",
+    "gas:open": "clasp open",
+    "gas:logs": "clasp logs"
+  }
+}

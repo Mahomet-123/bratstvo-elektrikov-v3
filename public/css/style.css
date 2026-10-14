@@ -1,0 +1,250 @@
+/* ============================================================
+   Братство Электриков — стили PWA (mobile-first, BEM)
+   ============================================================ */
+
+/* --- Темы: переменные --- */
+:root {
+  --bg: #f4f6fb;
+  --surface: #ffffff;
+  --surface-2: #eef1f7;
+  --text: #15181f;
+  --muted: #6b7280;
+  --border: #e2e6ee;
+  --primary: #1b6ef3;
+  --primary-contrast: #ffffff;
+  --danger: #e5484d;
+  --danger-soft: #fdecec;
+  --success: #1f9d55;
+  --success-soft: #e7f6ec;
+  --warn: #c9820a;
+  --shadow: 0 2px 10px rgba(20, 30, 60, .08);
+  --radius: 14px;
+  --radius-sm: 10px;
+  --tabbar-h: 60px;
+  --appbar-h: 56px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --surface: #181b22;
+    --surface-2: #20242d;
+    --text: #e8eaed;
+    --muted: #9aa3b2;
+    --border: #2a2f3a;
+    --primary: #3b82f6;
+    --primary-contrast: #ffffff;
+    --danger: #ff6166;
+    --danger-soft: #3a1f22;
+    --success: #34c07a;
+    --success-soft: #16301f;
+    --warn: #e0a23a;
+    --shadow: 0 2px 12px rgba(0, 0, 0, .4);
+  }
+}
+
+html[data-theme="light"] {
+  --bg: #f4f6fb; --surface: #ffffff; --surface-2: #eef1f7; --text: #15181f;
+  --muted: #6b7280; --border: #e2e6ee; --primary: #1b6ef3; --primary-contrast: #fff;
+  --danger: #e5484d; --danger-soft: #fdecec; --success: #1f9d55; --success-soft: #e7f6ec;
+  --warn: #c9820a; --shadow: 0 2px 10px rgba(20,30,60,.08);
+}
+html[data-theme="dark"] {
+  --bg: #0f1115; --surface: #181b22; --surface-2: #20242d; --text: #e8eaed;
+  --muted: #9aa3b2; --border: #2a2f3a; --primary: #3b82f6; --primary-contrast: #fff;
+  --danger: #ff6166; --danger-soft: #3a1f22; --success: #34c07a; --success-soft: #16301f;
+  --warn: #e0a23a; --shadow: 0 2px 12px rgba(0,0,0,.4);
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.45;
+  font-size: 15px;
+  overflow-x: hidden;
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+}
+a { color: var(--primary); }
+
+/* --- Appbar --- */
+.appbar {
+  position: sticky; top: 0; z-index: 30;
+  height: calc(var(--appbar-h) + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  display: flex; align-items: center; gap: 8px;
+  padding-left: 12px; padding-right: 12px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.appbar__title { font-weight: 700; font-size: 17px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appbar__actions { display: flex; gap: 4px; }
+.appbar__back {
+  border: none; background: transparent; color: var(--primary);
+  font-size: 28px; line-height: 1; width: 36px; height: 36px; cursor: pointer;
+}
+.iconbtn {
+  border: none; background: transparent; color: var(--text);
+  width: 38px; height: 38px; border-radius: 10px; font-size: 20px; cursor: pointer;
+}
+.iconbtn:active { background: var(--surface-2); }
+
+/* --- Контейнер --- */
+.app { padding: 14px 12px 24px; max-width: 720px; margin: 0 auto; }
+.appbar + .offline-badge + .app, .app { /* nothing */ }
+
+/* --- Offline badge --- */
+.offline-badge {
+  background: var(--warn); color: #1b1300; font-weight: 600;
+  text-align: center; font-size: 13px; padding: 6px 10px;
+}
+
+/* --- Tabbar --- */
+.tabbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--surface); border-top: 1px solid var(--border);
+  display: flex; align-items: stretch;
+}
+.tabbar__btn {
+  flex: 1; border: none; background: transparent; color: var(--muted);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; font-size: 11px; cursor: pointer;
+}
+.tabbar__btn--active { color: var(--primary); }
+.tabbar__ico { font-size: 20px; line-height: 1; }
+.tabbar__btn--add {
+  flex: 0 0 56px; color: var(--primary-contrast); background: var(--primary);
+  border-radius: 50%; width: 52px; height: 52px; align-self: center; margin: 0 6px;
+  font-size: 30px; box-shadow: var(--shadow);
+}
+
+/* --- Cards --- */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow);
+}
+.card__title { font-weight: 700; font-size: 16px; margin: 0 0 4px; }
+.card__sub { color: var(--muted); font-size: 13px; }
+.card--clickable { cursor: pointer; transition: transform .08s ease; }
+.card--clickable:active { transform: scale(.985); }
+
+/* --- Кнопки --- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); border-radius: var(--radius-sm); padding: 11px 16px;
+  font-size: 15px; font-weight: 600; cursor: pointer; min-height: 44px;
+}
+.btn:active { filter: brightness(.96); }
+.btn--primary { background: var(--primary); color: var(--primary-contrast); border-color: transparent; }
+.btn--danger { background: var(--danger); color: #fff; border-color: transparent; }
+.btn--ghost { background: transparent; }
+.btn--block { width: 100%; }
+.btn--sm { padding: 7px 11px; min-height: 36px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+/* --- Формы --- */
+.field { margin-bottom: 12px; }
+.field__label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
+.input, .select, .textarea {
+  width: 100%; border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); border-radius: var(--radius-sm); padding: 11px 12px;
+  font-size: 15px; font-family: inherit;
+}
+.input:focus, .select:focus, .textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+.textarea { resize: vertical; min-height: 70px; }
+.checkbox { display: flex; align-items: center; gap: 8px; font-size: 15px; cursor: pointer; }
+.checkbox input { width: 20px; height: 20px; accent-color: var(--primary); }
+
+/* --- Табы --- */
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; -webkit-overflow-scrolling: touch; }
+.tabs__btn {
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+  white-space: nowrap; cursor: pointer;
+}
+.tabs__btn--active { background: var(--primary); color: var(--primary-contrast); border-color: transparent; }
+
+/* --- Таблицы / списки --- */
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th, .table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.table th { color: var(--muted); font-weight: 600; }
+.table tr:last-child td { border-bottom: none; }
+.mono { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.right { text-align: right; }
+.muted { color: var(--muted); }
+.nowrap { white-space: nowrap; }
+
+/* --- Деньги / статусы --- */
+.money { font-weight: 600; font-variant-numeric: tabular-nums; }
+.money--pos { color: var(--success); }
+.money--neg { color: var(--danger); }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.pill--calc { background: var(--surface-2); color: var(--muted); }
+.pill--day { background: #e7effd; color: #1b6ef3; }
+.pill--closed { background: var(--success-soft); color: var(--success); }
+.pill--danger { background: var(--danger-soft); color: var(--danger); }
+
+/* --- Суммарная плашка --- */
+.totals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
+.totals__cell { background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px; }
+.totals__label { color: var(--muted); font-size: 12px; }
+.totals__value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+
+/* --- Спиннер / пусто --- */
+.loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; color: var(--muted); }
+.spinner { width: 34px; height: 34px; border: 4px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty { text-align: center; padding: 50px 16px; color: var(--muted); }
+.empty__icon { font-size: 42px; }
+.empty__text { font-size: 16px; font-weight: 600; margin-top: 8px; }
+.empty__sub { font-size: 13px; margin-top: 4px; }
+
+/* --- Модалка --- */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+.modal {
+  background: var(--surface); width: 100%; max-width: 560px; border-radius: 18px 18px 0 0;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); max-height: 90vh; overflow-y: auto;
+  position: relative; animation: slideUp .18s ease;
+}
+@keyframes slideUp { from { transform: translateY(20px); opacity: .6; } to { transform: translateY(0); opacity: 1; } }
+.modal__close { position: absolute; top: 8px; right: 10px; border: none; background: transparent; font-size: 26px; color: var(--muted); cursor: pointer; width: 40px; height: 40px; }
+.modal__title { font-size: 18px; font-weight: 700; margin: 0 0 12px; }
+.modal__body { margin-top: 4px; }
+.row { display: flex; gap: 10px; }
+.row--end { justify-content: flex-end; }
+.row > .btn { flex: 1; }
+
+/* --- Тосты --- */
+.toast-container { position: fixed; left: 0; right: 0; bottom: calc(var(--tabbar-h) + 14px); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; padding: 0 12px; }
+.toast { background: #15181f; color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; box-shadow: 0 6px 20px rgba(0,0,0,.3); max-width: 90%; animation: toastIn .2s ease; }
+.toast--success { background: var(--success); }
+.toast--error { background: var(--danger); }
+.toast--out { opacity: 0; transform: translateY(8px); transition: .3s; }
+
+/* --- Авторизация --- */
+.auth { max-width: 380px; margin: 8vh auto 0; }
+.auth__logo { text-align: center; font-size: 46px; }
+.auth__head { text-align: center; margin-bottom: 18px; }
+.auth__hint { font-size: 13px; color: var(--muted); text-align: center; margin-top: 14px; }
+
+/* --- Бейдж счёта --- */
+.section-head { display: flex; align-items: center; justify-content: space-between; margin: 4px 2px 10px; }
+.section-head__title { font-size: 15px; font-weight: 700; }
+.linkbtn { background: none; border: none; color: var(--primary); font-weight: 600; font-size: 14px; cursor: pointer; padding: 4px; }
+
+/* --- Мини-превью фото --- */
+.thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+
+/* --- Статус-бар в шапке объекта --- */
+.objhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.objhead__code { font-size: 12px; color: var(--muted); font-weight: 600; }
+
+/* --- Клиентский кабинет --- */
+.cabinet { max-width: 640px; margin: 0 auto; }
+.cabinet__brand { text-align: center; padding: 8px 0 4px; }
+.cabinet__brand-logo { font-size: 40px; }

@@ -62,6 +62,12 @@ function Router_handle(e) {
         if (!cab.ok) return json_({ ok: false, error: cab.error });
         return json_({ ok: true, cabinet: cab });
       }
+      case 'cabinet:create': {
+        var u = Router_user(p.token);
+        if (!Router_isAdmin(u, p.token)) return json_({ ok: false, error: 'Только руководитель' });
+        var created = Cabinet_create(Number(p.id), u.login, p.ttl || 60);
+        return json_({ ok: true, cabinet: created });
+      }
 
       // ---------- По токену ----------
       case 'me': {
@@ -149,6 +155,12 @@ function Router_handle(e) {
         if (!u) return json_({ ok: false, error: 'Нужна авторизация' });
         var r = Purchases_add(Number(p.objectId), p.purchase || {});
         return json_({ ok: true, result: r });
+      }
+      case 'purchases:remove': {
+        var u = Router_user(p.token);
+        if (!u) return json_({ ok: false, error: 'Нужна авторизация' });
+        var rr = Purchases_remove(Number(p.objectId), Number(p.rowNum));
+        return json_({ ok: true, result: rr });
       }
       case 'photos:upload': {
         var u = Router_user(p.token);

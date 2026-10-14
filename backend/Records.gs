@@ -100,3 +100,10 @@ function Purchases_list(objectId) {
     .filter(function (r) { return String(r.objectId) === String(objectId); })
     .map(stripRow_);
 }
+
+// Удаление позиции закупки по номеру строки листа
+function Purchases_remove(objectId, rowNum) {
+  deleteRow(CONFIG.SHEET_PURCHASE, rowNum);
+  syncObjectSheet(objectId);
+  return { ok: true };
+}

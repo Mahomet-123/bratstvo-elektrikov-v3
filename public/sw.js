@@ -1,6 +1,6 @@
 // sw.js — service worker PWA «Братство Электриков»
 // Кеширует оболочку приложения; API (кросс-домен script.google.com) пропускает насквозь.
-const CACHE = 'bratstvo-v2';
+const CACHE = 'bratstvo-v3';
 const SHELL = [
   './',
   './index.html',

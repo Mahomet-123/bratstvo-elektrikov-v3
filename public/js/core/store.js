@@ -17,6 +17,14 @@ window.Store = (function () {
     getPrices: function () { return getJSON(K.PRICES) || []; },
     setPrices: function (p) { setJSON(K.PRICES, p || []); },
 
+    // Кеш списка объектов на устройстве.
+    getObjectsCache: function () { return getJSON('be_objects') || null; },
+    setObjectsCache: function (v) { setJSON('be_objects', v || null); },
+
+    // Кеш карточки объекта на устройстве (по id).
+    getObjectCache: function (id) { return getJSON('be_obj_' + id) || null; },
+    setObjectCache: function (id, v) { setJSON('be_obj_' + id, v || null); },
+
     getTheme: function () { return get(K.THEME) || 'auto'; },
     setTheme: function (t) { set(K.THEME, t); },
 

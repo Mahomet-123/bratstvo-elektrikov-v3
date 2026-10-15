@@ -1,4 +1,6 @@
 // objectCard.js — карточка объекта: Расчёт, Закупка, День, Отчёт.
+// Данные объекта грузим 1 раз и храним на устройстве; переключение вкладок
+// идёт из кеша (без сети). Синхронизация — вручную (кнопка ↻) или после изменений.
 window.ObjectCard = (function () {
 
   var TABS = [
@@ -8,26 +10,12 @@ window.ObjectCard = (function () {
     { key: 'report', label: 'Отчёт' }
   ];
 
+  // Кеш карточек объектов: в памяти + на устройстве (localStorage).
+  var OBJ = {};     // id -> данные объекта
+  var SYNC = {};    // id -> { state: 'synced'|'pending'|'saving'|'error', ts, pending }
+  var ACTIVE = {};  // id -> последняя активная вкладка
+
   function sum(arr, f) { return arr.reduce(function (s, r) { return s + (Number(f(r)) || 0); }, 0); }
-
-  function render(id) {
-    var app = U.$('#app');
-    U.loading(app, 'Загрузка объекта…');
-    load(id).then(function (data) { show(app, id, data, 'calc'); })
-      .catch(function (err) { U.emptyState(app, 'Не удалось загрузить', String(err && err.message || err)); });
-  }
-
-  function load(id) {
-    return apiGet('object', { token: Store.getToken(), id: id }).then(function (d) {
-      if (!d.ok) throw new Error(d.error || 'Ошибка');
-      return d;
-    });
-  }
-
-  function reload(app, id, active) {
-    load(id).then(function (data) { show(app, id, data, active); })
-      .catch(function (err) { U.toast(err.message, 'error'); });
-  }
 
   function statusPill(s) {
     if (s === 'закрыт') return U.el('span', { class: 'pill pill--closed', text: 'закрыт' });
@@ -35,11 +23,66 @@ window.ObjectCard = (function () {
     return U.el('span', { class: 'pill pill--calc', text: s || '—' });
   }
 
+  function syncLabel(s) {
+    if (!s) return '✓ Синхронизировано';
+    if (s.state === 'pending') return '⏳ Не отправлено' + (s.pending ? ' (' + s.pending + ')' : '');
+    if (s.state === 'saving') return '⏳ Сохранение…';
+    if (s.state === 'error') return '⚠ Ошибка отправки';
+    return '✓ Синхронизировано';
+  }
+  function syncClass(s) {
+    if (!s) return 'pill--ok';
+    if (s.state === 'pending') return 'pill--warn';
+    if (s.state === 'error') return 'pill--danger';
+    return 'pill--ok';
+  }
+  function setSync(id, state, pending) {
+    SYNC[id] = { state: state, ts: Date.now(), pending: pending || 0 };
+    var el = U.$('#objSync');
+    if (el) { el.className = 'pill ' + syncClass(SYNC[id]); el.textContent = syncLabel(SYNC[id]); }
+  }
+
+  // Загрузка с сервера (или из кеша устройства, если не форсировано).
+  function load(id, force) {
+    if (OBJ[id] && !force) return Promise.resolve(OBJ[id]);
+    return apiGet('object', { token: Store.getToken(), id: id }).then(function (d) {
+      if (!d.ok) throw new Error(d.error || 'Ошибка');
+      OBJ[id] = d; Store.setObjectCache(id, d);
+      setSync(id, 'synced', 0);
+      return d;
+    });
+  }
+
+  // Вход в карточку. force=true — принудительная перезагрузка с сервера.
+  function render(id, force) {
+    if (!OBJ[id]) {
+      var disk = Store.getObjectCache(id);
+      if (disk && !force) OBJ[id] = disk;
+    }
+    if (OBJ[id] && !force) { ACTIVE[id] = ACTIVE[id] || 'calc'; show(U.$('#app'), id, OBJ[id], ACTIVE[id]); return; }
+    var app = U.$('#app');
+    U.loading(app, force ? 'Синхронизация…' : 'Загрузка объекта…');
+    load(id, force).then(function (data) { ACTIVE[id] = ACTIVE[id] || 'calc'; show(app, id, data, ACTIVE[id]); })
+      .catch(function (err) { U.emptyState(app, 'Не удалось загрузить', String(err && err.message || err)); });
+  }
+
+  // Ручная перезагрузка с сервера (кнопка ↻).
+  function reload(id) {
+    var app = U.$('#app');
+    setSync(id, 'saving', 0);
+    load(id, true).then(function (data) { show(app, id, data, ACTIVE[id] || 'calc'); U.toast('Данные обновлены', 'success'); })
+      .catch(function (err) {
+        Offline.count().then(function (n) { setSync(id, n > 0 ? 'pending' : 'error', n); });
+        U.emptyState(app, 'Не удалось обновить', String(err && err.message || err));
+      });
+  }
+
   function show(app, id, data, active) {
+    ACTIVE[id] = active;
     var o = data.object || {};
     U.clear(app);
 
-    app.appendChild(U.el('div', { class: 'card' }, [
+    var objhead = U.el('div', { class: 'card' }, [
       U.el('div', { class: 'objhead' }, [
         U.el('div', { class: 'card__title', text: o.name || 'Без названия' }),
         statusPill(o.status)
@@ -47,15 +90,19 @@ window.ObjectCard = (function () {
       U.el('div', { class: 'objhead__code', text: o.code || '' }),
       o.client ? U.el('div', { class: 'card__sub', text: 'Клиент: ' + o.client }) : null,
       o.master ? U.el('div', { class: 'card__sub', text: 'Мастер: ' + o.master }) : null,
-      o.commissioning == 1 ? U.el('div', { class: 'card__sub', text: '⚡ Пусконаладка +30%' }) : null
-    ]));
+      o.commissioning == 1 ? U.el('div', { class: 'card__sub', text: '⚡ Пусконаладка +30%' }) : null,
+      U.el('div', { class: 'objsync' }, [
+        U.el('span', { id: 'objSync', class: 'pill ' + syncClass(SYNC[id]), text: syncLabel(SYNC[id]) }),
+        U.el('button', { class: 'linkbtn', text: '↻ Обновить', 'aria-label': 'Обновить с сервера', onclick: function () { reload(id); } })
+      ])
+    ]);
+    app.appendChild(objhead);
 
     var tabsBar = U.el('div', { class: 'tabs' });
     TABS.forEach(function (t) {
       tabsBar.appendChild(U.el('button', {
-        class: 'tabs__btn' + (t.key === active ? ' tabs__btn--active' : ''),
-        text: t.label,
-        onclick: function () { show(app, id, data, t.key); }
+        class: 'tabs__btn' + (t.key === active ? ' tabs__btn--active' : ''), text: t.label,
+        onclick: function () { show(app, id, OBJ[id], t.key); } // переключение вкладки — только из кеша, без сети
       }));
     });
     app.appendChild(tabsBar);
@@ -63,10 +110,21 @@ window.ObjectCard = (function () {
     var content = U.el('div', { class: 'tab-content' });
     app.appendChild(content);
 
-    if (active === 'calc') renderCalc(content, id, data, function () { reload(app, id, 'calc'); });
-    else if (active === 'purchase') renderPurchase(content, id, data, function () { reload(app, id, 'purchase'); });
-    else if (active === 'day') renderDay(content, id, data, function () { reload(app, id, 'day'); });
-    else renderReport(content, id, data, function (a) { reload(app, id, a || 'report'); });
+    if (active === 'calc') renderCalc(content, id, data, function (a) { afterChange(id, a); });
+    else if (active === 'purchase') renderPurchase(content, id, data, function () { afterChange(id); });
+    else if (active === 'day') renderDay(content, id, data, function () { afterChange(id); });
+    else renderReport(content, id, data, function (a) { afterChange(id, a); });
+  }
+
+  // После изменения: перечитываем объект с сервера, обновляем кеш и перерисовываем.
+  function afterChange(id, active) {
+    active = active || ACTIVE[id] || 'calc';
+    setSync(id, 'saving', 0);
+    load(id, true).then(function (data) { show(U.$('#app'), id, data, active); })
+      .catch(function (err) {
+        Offline.count().then(function (n) { setSync(id, n > 0 ? 'pending' : 'error', n); });
+        U.toast(err.message || 'Ошибка сохранения', 'error');
+      });
   }
 
   /* ---------------- РАСЧЁТ ---------------- */
@@ -77,11 +135,11 @@ window.ObjectCard = (function () {
 
     root.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Позиции расчёта (' + calc.length + ')' }),
-      U.el('button', { class: 'linkbtn', text: '＋ Добавить', onclick: function () { calcModal(id, null, refresh); } })
+      U.el('button', { class: 'linkbtn', text: '＋ Добавить', 'aria-label': 'Добавить работу', onclick: function () { calcModal(id, null, refresh); } })
     ]));
 
     if (!calc.length) {
-      U.emptyState(root, 'Нет позиций', 'Добавьте позиции из прайс-листа или вручную.');
+      U.emptyState(root, 'Нет позиций', 'Нажмите «Добавить», выберите работу из прайс-листа или введите вручную.');
     } else {
       calc.forEach(function (r) {
         root.appendChild(U.el('div', { class: 'card' }, [
@@ -97,8 +155,8 @@ window.ObjectCard = (function () {
           ]),
           r.note ? U.el('div', { class: 'card__sub', text: '📝 ' + r.note }) : null,
           U.el('div', { class: 'row', style: { marginTop: '8px', justifyContent: 'flex-end' } }, [
-            U.el('button', { class: 'btn btn--sm', text: '✎', onclick: function () { calcModal(id, r, refresh); } }),
-            U.el('button', { class: 'btn btn--sm btn--danger', text: '✕', onclick: function () { removeCalc(id, r, refresh); } })
+            U.el('button', { class: 'btn btn--sm', text: '✎ Изменить', 'aria-label': 'Изменить', onclick: function () { calcModal(id, r, refresh); } }),
+            U.el('button', { class: 'btn btn--sm btn--danger', text: '✕ Удалить', 'aria-label': 'Удалить', onclick: function () { removeCalc(id, r, refresh); } })
           ])
         ]));
       });
@@ -114,18 +172,25 @@ window.ObjectCard = (function () {
         U.el('div', { class: 'totals__value', text: String(calc.length) })
       ])
     ]));
-    root.appendChild(U.el('button', { class: 'btn btn--block', text: '🔄 Пересчитать', onclick: function () {
+    root.appendChild(U.el('button', { class: 'btn btn--block', text: '🔄 Пересчитать', 'aria-label': 'Пересчитать', onclick: recalc }));
+    function recalc() {
+      var btn = U.$('.btn--block', root);
+      btn.disabled = true; btn.classList.add('is-loading');
       apiPost('records:recalc', { token: Store.getToken(), objectId: id }).then(function (d) {
         if (!d.ok) throw new Error(d.error || 'Ошибка');
         U.toast('Пересчитано: ' + U.money(d.result.total), 'success');
-        refresh();
-      }).catch(function (e) { U.toast(e.message, 'error'); });
-    } }));
+        refresh(); // afterChange → перечитывание + перерисовка
+      }).catch(function (e) {
+        U.toast(e.message, 'error');
+        btn.disabled = false; btn.classList.remove('is-loading');
+      });
+    }
   }
 
   function removeCalc(id, r, refresh) {
     U.confirm('Удалить позицию «' + (r.name || '') + '»?').then(function (ok) {
       if (!ok) return;
+      var btn = U.$('.btn--danger', null);
       apiPost('records:remove', { token: Store.getToken(), objectId: id, rowNum: r.__row })
         .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); U.toast('Удалено', 'success'); refresh(); })
         .catch(function (e) { U.toast(e.message, 'error'); });
@@ -137,7 +202,7 @@ window.ObjectCard = (function () {
     var editing = !!line;
 
     var searchI = U.el('input', { class: 'input', placeholder: 'Поиск в прайс-листе…' });
-    var listBox = U.el('div', { style: { maxHeight: '180px', overflowY: 'auto', marginBottom: '10px' } });
+    var listBox = U.el('div', { class: 'pricelist', style: { maxHeight: '170px', overflowY: 'auto', marginBottom: '10px' } });
     var nameI = U.el('input', { class: 'input', placeholder: 'Наименование' });
     var sectI = U.el('input', { class: 'input', placeholder: 'Раздел' });
     var unitI = U.el('input', { class: 'input', placeholder: 'Ед. изм.' });
@@ -153,15 +218,25 @@ window.ObjectCard = (function () {
     function renderList(q) {
       U.clear(listBox);
       var ql = (q || '').toLowerCase();
-      var hits = prices.filter(function (p) {
+      var work = prices.filter(function (p) {
+        if (p.type && p.type !== 'work') return false; // только реальные работы
         return !ql || (p.name + ' ' + p.section).toLowerCase().indexOf(ql) >= 0;
-      }).slice(0, 40);
+      });
+      var hits = work.slice(0, 50);
+      var countEl = U.el('div', { class: 'card__sub', style: { marginBottom: '6px' }, text: 'Найдено работ: ' + hits.length + ' из ' + work.length + (ql ? '' : ' (показаны первые 50)') });
+      listBox.appendChild(countEl);
       if (!hits.length) { listBox.appendChild(U.el('div', { class: 'card__sub', text: 'Ничего не найдено' })); return; }
-      hits.forEach(function (p) {
-        listBox.appendChild(U.el('div', { class: 'card card--clickable', style: { padding: '8px 10px', marginBottom: '6px' }, onclick: function () { applyPrice(p); } }, [
-          U.el('div', { style: { fontWeight: '600' }, text: p.name }),
-          U.el('div', { class: 'card__sub', text: p.section + ' · ' + U.money(p.price) + '/' + (p.unit || '') })
-        ]));
+      // группируем по разделу для удобства
+      var bySec = {};
+      hits.forEach(function (p) { (bySec[p.section] = bySec[p.section] || []).push(p); });
+      Object.keys(bySec).forEach(function (sec) {
+        listBox.appendChild(U.el('div', { class: 'pricelist__sec', text: sec }));
+        bySec[sec].forEach(function (p) {
+          listBox.appendChild(U.el('div', { class: 'card card--clickable pricelist__item', style: { padding: '8px 10px', marginBottom: '6px' }, onclick: function () { applyPrice(p); } }, [
+            U.el('div', { style: { fontWeight: '600' }, text: p.name }),
+            U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
+          ]));
+        });
       });
     }
     searchI.addEventListener('input', function () { renderList(searchI.value); });
@@ -196,6 +271,8 @@ window.ObjectCard = (function () {
     function save() {
       var name = nameI.value.trim();
       if (!name) { U.toast('Введите наименование', 'error'); return; }
+      var btn = body.querySelector('.btn--primary');
+      btn.disabled = true; btn.classList.add('is-loading');
       var payload = {
         token: Store.getToken(), objectId: id,
         line: {
@@ -204,8 +281,6 @@ window.ObjectCard = (function () {
           coef: Number(coefI.value) || 1, material: matI.checked ? 1 : 0, note: noteI.value.trim()
         }
       };
-      var btn = body.querySelector('.btn--primary');
-      btn.disabled = true;
       var p = editing
         ? apiPost('records:update', { token: Store.getToken(), objectId: id, rowNum: line.__row, patch: payload.line })
         : apiPost('records:add', payload);
@@ -214,7 +289,7 @@ window.ObjectCard = (function () {
         m.close();
         U.toast(editing ? 'Обновлено' : 'Добавлено', 'success');
         refresh();
-      }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; });
+      }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; btn.classList.remove('is-loading'); });
     }
   }
 
@@ -225,11 +300,11 @@ window.ObjectCard = (function () {
 
     root.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Закупка (' + pur.length + ')' }),
-      U.el('button', { class: 'linkbtn', text: '＋ Добавить', onclick: function () { purchaseModal(id, refresh); } })
+      U.el('button', { class: 'linkbtn', text: '＋ Добавить', 'aria-label': 'Добавить закупку', onclick: function () { purchaseModal(id, refresh); } })
     ]));
 
     if (!pur.length) {
-      U.emptyState(root, 'Нет закупок', 'Добавьте покупку с фото чека при необходимости.');
+      U.emptyState(root, 'Нет закупок', 'Добавьте купленный материал и прикрепите фото чека.');
     } else {
       pur.forEach(function (r) {
         root.appendChild(U.el('div', { class: 'card' }, [
@@ -240,10 +315,11 @@ window.ObjectCard = (function () {
           U.el('div', { class: 'card__sub' }, [
             U.date(r.date) + (Number(r.qty) ? ' · ' + r.qty + ' шт × ' + U.money(r.price) : '')
           ]),
-          r.photo ? U.el('img', { class: 'thumb', src: r.photo, style: { marginTop: '6px' } }) : null,
+          r.photo ? U.el('img', { class: 'thumb thumb--block', src: r.photo, style: { marginTop: '6px' } }) : null,
           r.note ? U.el('div', { class: 'card__sub', text: '📝 ' + r.note }) : null,
           U.el('div', { class: 'row', style: { marginTop: '8px', justifyContent: 'flex-end' } }, [
-            U.el('button', { class: 'btn btn--sm btn--danger', text: '✕', onclick: function () { removePurchase(id, r, refresh); } })
+            U.el('button', { class: 'btn btn--sm', text: '✎ Изменить', 'aria-label': 'Изменить', onclick: function () { purchaseModal(id, refresh, r); } }),
+            U.el('button', { class: 'btn btn--sm btn--danger', text: '✕ Удалить', 'aria-label': 'Удалить', onclick: function () { removePurchase(id, r, refresh); } })
           ])
         ]));
       });
@@ -270,23 +346,31 @@ window.ObjectCard = (function () {
     });
   }
 
-  function purchaseModal(id, refresh) {
-    var dateI = U.el('input', { class: 'input', type: 'date', value: U.todayISO() });
-    var nameI = U.el('input', { class: 'input', placeholder: 'Наименование' });
-    var qtyI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Кол-во', value: '1' });
+  function purchaseModal(id, refresh, existing) {
+    var editing = !!existing;
+    var dateI = U.el('input', { class: 'input', type: 'date', value: (existing && existing.date) || U.todayISO() });
+    var nameI = U.el('input', { class: 'input', placeholder: 'Наименование материала' });
+    var qtyI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Кол-во', value: (existing ? existing.qty : '1') || '1' });
     var priceI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Цена за ед.' });
     var noteI = U.el('textarea', { class: 'textarea', placeholder: 'Примечание' });
-    var fileI = U.el('input', { class: 'input', type: 'file', accept: 'image/*' });
+    var fileI = U.el('input', { class: 'input', type: 'file', accept: 'image/*', 'aria-label': 'Фото чека' });
+    var preview = U.el('div', { style: { marginTop: '8px' } });
+
+    function showPreview(src) {
+      U.clear(preview);
+      if (src) preview.appendChild(U.el('img', { class: 'thumb thumb--block', src: src, style: { marginTop: '0' } }));
+    }
 
     var body = U.el('div', {}, [
-      U.el('div', { class: 'modal__title', text: 'Новая закупка' }),
+      U.el('div', { class: 'modal__title', text: editing ? 'Редактировать закупку' : 'Новая закупка' }),
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Дата' }), dateI]),
-      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Наименование *' }), nameI]),
+      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Наименование материала *' }), nameI]),
       U.el('div', { style: { display: 'flex', gap: '10px' } }, [
         U.el('div', { class: 'field', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Кол-во' }), qtyI]),
         U.el('div', { class: 'field', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Цена' }), priceI])
       ]),
-      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Фото чека (необязательно)' }), fileI]),
+      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Фото чека (камера или галерея)' }), fileI]),
+      preview,
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Примечание' }), noteI]),
       U.el('div', { class: 'row' }, [
         U.el('button', { class: 'btn btn--ghost', text: 'Отмена', onclick: function () { m.close(); } }),
@@ -295,29 +379,53 @@ window.ObjectCard = (function () {
     ]);
     var m = U.modal(body);
 
+    if (editing) {
+      nameI.value = existing.name || '';
+      priceI.value = existing.price || '';
+      noteI.value = existing.note || '';
+      if (existing.photo) showPreview(existing.photo);
+    }
+
+    fileI.addEventListener('change', function () {
+      var f = fileI.files && fileI.files[0];
+      if (!f) return;
+      var rd = new FileReader();
+      rd.onload = function () { showPreview(String(rd.result)); };
+      rd.onerror = function () {};
+      rd.readAsDataURL(f);
+    });
+
     function save() {
       var name = nameI.value.trim();
       if (!name) { U.toast('Введите наименование', 'error'); return; }
       var btn = body.querySelector('.btn--primary');
-      btn.disabled = true; btn.textContent = 'Сохранение…';
+      btn.disabled = true; btn.classList.add('is-loading');
       var purchase = {
         date: dateI.value || U.todayISO(), name: name,
         qty: Number(qtyI.value) || 0, price: Number(priceI.value) || 0, note: noteI.value.trim()
       };
       function send(photo) {
         if (photo) purchase.photo = photo;
-        apiPost('purchases:add', { token: Store.getToken(), objectId: id, purchase: purchase }).then(function (d) {
+        var p = editing
+          ? apiPost('purchases:update', { token: Store.getToken(), objectId: id, rowNum: existing.__row, purchase: purchase })
+          : apiPost('purchases:add', { token: Store.getToken(), objectId: id, purchase: purchase });
+        p.then(function (d) {
           if (!d.ok) throw new Error(d.error || 'Ошибка');
-          m.close(); U.toast('Закупка добавлена', 'success'); refresh();
-        }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; btn.textContent = 'Сохранить'; });
+          m.close(); U.toast(editing ? 'Обновлено' : 'Закупка добавлена', 'success'); refresh();
+        }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; btn.classList.remove('is-loading'); });
       }
       var f = fileI.files && fileI.files[0];
-      if (f) {
+      if (f && !editing) {
         var rd = new FileReader();
         rd.onload = function () { send(String(rd.result).replace(/^data:.*;base64,/, '')); };
         rd.onerror = function () { send(''); };
         rd.readAsDataURL(f);
-      } else { send(''); }
+      } else if (f && editing) {
+        var rd2 = new FileReader();
+        rd2.onload = function () { send(String(rd2.result).replace(/^data:.*;base64,/, '')); };
+        rd2.onerror = function () { send(existing.photo || ''); };
+        rd2.readAsDataURL(f);
+      } else { send(editing ? (existing.photo || '') : ''); }
     }
   }
 
@@ -326,7 +434,7 @@ window.ObjectCard = (function () {
     var vis = data.visits || [];
     root.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Дни работ (' + vis.length + ')' }),
-      U.el('button', { class: 'linkbtn', text: '＋ Добавить', onclick: function () { dayModal(id, refresh); } })
+      U.el('button', { class: 'linkbtn', text: '＋ Добавить', 'aria-label': 'Добавить день', onclick: function () { dayModal(id, refresh); } })
     ]));
     if (!vis.length) {
       U.emptyState(root, 'Нет записей о днях', 'Отмечайте выезды и выполненные работы.');
@@ -365,14 +473,14 @@ window.ObjectCard = (function () {
     var m = U.modal(body);
 
     function save() {
-      var btn = body.querySelector('.btn--primary'); btn.disabled = true;
+      var btn = body.querySelector('.btn--primary'); btn.disabled = true; btn.classList.add('is-loading');
       apiPost('visits:add', {
         token: Store.getToken(), objectId: id,
         visit: { date: dateI.value || U.todayISO(), master: masterI.value.trim(), dayNumber: dayI.value.trim(), note: noteI.value.trim() }
       }).then(function (d) {
         if (!d.ok) throw new Error(d.error || 'Ошибка');
         m.close(); U.toast('День добавлен', 'success'); refresh();
-      }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; });
+      }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; btn.classList.remove('is-loading'); });
     }
   }
 

@@ -42,6 +42,7 @@ window.Offline = (function () {
       var b = U.$('#offlineBadge'); if (!b) return;
       if (n > 0) { b.style.display = ''; b.textContent = '⚠ Офлайн: ' + n + ' операций в очереди'; }
       else { b.style.display = 'none'; }
+      try { window.dispatchEvent(new CustomEvent('be:sync', { detail: { pending: n } })); } catch (e) {}
     });
   }
 

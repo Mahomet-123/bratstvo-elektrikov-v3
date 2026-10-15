@@ -1,6 +1,8 @@
 // objects.js — список объектов и создание нового.
 window.Objects = (function () {
 
+  var LIST = null; // кеш списка в памяти
+
   function ensurePrices() {
     var cached = Store.getPrices();
     if (cached && cached.length) return Promise.resolve(cached);
@@ -32,23 +34,37 @@ window.Objects = (function () {
     return node;
   }
 
-  function render() {
+  function paint(app, objects, fromCache) {
+    U.clear(app);
+    app.appendChild(U.el('div', { class: 'section-head' }, [
+      U.el('div', { class: 'section-head__title' }, [
+        U.el('span', { text: 'Объекты (' + objects.length + ')' })
+      ]),
+      U.el('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, [
+        fromCache ? U.el('span', { class: 'card__sub', text: 'кэш' }) : null,
+        U.el('button', { class: 'linkbtn', text: '＋ Новый', onclick: showCreate })
+      ])
+    ]));
+    if (!objects.length) {
+      U.emptyState(app, 'Пока нет объектов', 'Нажмите «Новый», чтобы добавить первый объект.');
+      return;
+    }
+    objects.forEach(function (o) { app.appendChild(card(o)); });
+  }
+
+  function render(force) {
     var app = U.$('#app');
+    if (LIST && !force) { paint(app, LIST, true); return; }
     U.loading(app, 'Загрузка объектов…');
     Promise.all([ensurePrices(), apiGet('objects', { token: Store.getToken() })]).then(function (res) {
       var objects = (res[1] && res[1].ok) ? (res[1].objects || []) : [];
-      U.clear(app);
-      app.appendChild(U.el('div', { class: 'section-head' }, [
-        U.el('div', { class: 'section-head__title', text: 'Объекты (' + objects.length + ')' }),
-        U.el('button', { class: 'linkbtn', text: '＋ Новый', onclick: showCreate })
-      ]));
-      if (!objects.length) {
-        U.emptyState(app, 'Пока нет объектов', 'Нажмите «Новый», чтобы добавить первый объект.');
-        return;
-      }
-      objects.forEach(function (o) { app.appendChild(card(o)); });
+      LIST = objects; Store.setObjectsCache(objects);
+      paint(app, objects, false);
     }).catch(function (err) {
-      U.emptyState(app, 'Не удалось загрузить', String(err && err.message || err));
+      // при ошибке — показываем кеш, если есть
+      var cached = Store.getObjectsCache();
+      if (cached && cached.length) { LIST = cached; paint(app, cached, true); }
+      else U.emptyState(app, 'Не удалось загрузить', String(err && err.message || err));
     });
   }
 

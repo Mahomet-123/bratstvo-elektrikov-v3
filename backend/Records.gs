@@ -107,3 +107,21 @@ function Purchases_remove(objectId, rowNum) {
   syncObjectSheet(objectId);
   return { ok: true };
 }
+
+// Обновление позиции закупки по номеру строки листа
+function Purchases_update(objectId, rowNum, p) {
+  var photoUrl = '';
+  if (p.photo) {
+    var res = Photos_upload('purchase_' + uid() + '.jpg', p.photo);
+    photoUrl = res.url;
+  }
+  var price = Number(p.price) || 0;
+  var qty = Number(p.qty) || 0;
+  var sum = Math.round(price * qty);
+  updateRow(CONFIG.SHEET_PURCHASE, rowNum, [
+    objectId, p.date || (new Date().toISOString().slice(0, 10)),
+    p.n || '', p.name || '', qty, price, sum, photoUrl, p.note || '', nowISO()
+  ]);
+  syncObjectSheet(objectId);
+  return { ok: true, sum: sum, photo: photoUrl };
+}

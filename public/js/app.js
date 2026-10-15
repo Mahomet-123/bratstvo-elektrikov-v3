@@ -28,10 +28,12 @@
   var logoutBtn = U.$('#logoutBtn');
   var backBtn = U.$('#appBack');
   var navAdmin = U.$('#navAdmin');
+  var syncBtn = U.$('#syncBtn');
 
   function showChrome(on) {
     tabbar.hidden = !on;
     logoutBtn.hidden = !on;
+    syncBtn.hidden = !on;
     navAdmin.hidden = !(on && Store.isAdmin());
     if (!on) backBtn.hidden = true;
   }
@@ -60,6 +62,39 @@
     b.addEventListener('click', function () { Router.go(b.getAttribute('data-go')); });
   });
 
+  /* ---------- Кнопка синхронизации ---------- */
+  function refreshCurrent() {
+    var p = (location.hash.replace(/^#/, '') || '/');
+    var m;
+    if ((m = p.match(/^\/object\/(\d+)$/))) ObjectCard.render(m[1], true);
+    else if (p === '/objects') Objects.render(true);
+    else if (p === '/admin') Admin.render();
+    else if (p === '/profile') Profile.render();
+  }
+  syncBtn.addEventListener('click', function () {
+    syncBtn.classList.add('spin');
+    var done = function () { setTimeout(function () { syncBtn.classList.remove('spin'); }, 500); };
+    if (window.Offline) {
+      Offline.flush().then(function (n) {
+        if (n > 0) U.toast('Отправлено в таблицу: ' + n, 'success');
+        refreshCurrent();
+      }).catch(function () { refreshCurrent(); }).then(done);
+    } else { refreshCurrent(); done(); }
+  });
+
+  /* ---------- Индикатор очереди/синхронизации ---------- */
+  function updateSyncIndicator() {
+    if (!window.Offline) return;
+    Offline.count().then(function (n) {
+      if (n > 0) { syncBtn.classList.add('iconbtn--pending'); syncBtn.title = 'Есть неотправленные (' + n + '). Нажмите для синхронизации'; }
+      else { syncBtn.classList.remove('iconbtn--pending'); syncBtn.title = 'Синхронизировать'; }
+    });
+  }
+  window.addEventListener('be:sync', updateSyncIndicator);
+  window.addEventListener('online', updateSyncIndicator);
+  window.addEventListener('offline', updateSyncIndicator);
+  updateSyncIndicator();
+
   /* ---------- Маршруты ---------- */
   function requireAuth(cb) {
     if (Store.isAuthed()) cb(); else Router.go('#/login');
@@ -72,13 +107,13 @@
   Router.add(/^\/objects$/, function () {
     requireAuth(function () {
       showChrome(true); setBack(false); setTitle(Store.isAdmin() ? 'Объекты · Руководитель' : 'Объекты');
-      updateTabbar('/objects'); Objects.render();
+      updateTabbar('/objects'); Objects.render(false);
     });
   });
   Router.add(/^\/object\/(\d+)$/, function (id) {
     requireAuth(function () {
       showChrome(true); setBack(true); setTitle('Объект #' + id); updateTabbar('/object/' + id);
-      ObjectCard.render(id);
+      ObjectCard.render(id, false);
     });
   });
   Router.add(/^\/admin$/, function () {

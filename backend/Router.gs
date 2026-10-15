@@ -169,6 +169,12 @@ function Router_handle(e) {
         var rr = Purchases_remove(Number(p.objectId), Number(p.rowNum));
         return json_({ ok: true, result: rr });
       }
+      case 'purchases:update': {
+        var u = Router_user(p.token);
+        if (!u) return json_({ ok: false, error: 'Нужна авторизация' });
+        var ru = Purchases_update(Number(p.objectId), Number(p.rowNum), p.purchase || {});
+        return json_({ ok: true, result: ru });
+      }
       case 'photos:upload': {
         var u = Router_user(p.token);
         if (!u) return json_({ ok: false, error: 'Нужна авторизация' });

@@ -30,8 +30,12 @@ function show(app, cab) {
       U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Итого к оплате' }), U.el('div', { class: 'totals__value money', text: U.money(cab.total) })]),
       U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Позиций' }), U.el('div', { class: 'totals__value', text: String((cab.calc || []).length) })])
     ]),
+    // --- Смета ---
     U.el('div', { class: 'section-head' }, [U.el('div', { class: 'section-head__title', text: 'Смета' })]),
     (cab.calc && cab.calc.length) ? renderTable(cab.calc) : U.el('div', { class: 'card card__sub', style: { textAlign: 'center' }, text: 'Позиций пока нет' }),
+    // --- Закупки (материалы и фото накладных) ---
+    U.el('div', { class: 'section-head', style: { marginTop: '14px' } }, [U.el('div', { class: 'section-head__title', text: 'Закупки материалов' })]),
+    (cab.purchases && cab.purchases.length) ? renderPurchases(cab.purchases) : U.el('div', { class: 'card card__sub', style: { textAlign: 'center' }, text: 'Закупок пока нет' }),
     U.el('div', { class: 'card__sub', style: { marginTop: '14px', textAlign: 'center' }, text: 'Документ сформирован автоматически. Всего доброго!' })
   ]));
 }
@@ -51,4 +55,24 @@ function renderTable(calc) {
       U.el('tbody', {}, rows)
     ])
   ]);
+}
+
+function renderPurchases(purchases) {
+  var cards = purchases.map(function (r) {
+    return U.el('div', { class: 'card' }, [
+      U.el('div', { class: 'objhead' }, [
+        U.el('div', { class: 'card__title', text: r.name || '—' }),
+        U.el('div', { class: 'money', text: U.money(r.sum) })
+      ]),
+      U.el('div', { class: 'card__sub' }, [
+        U.date(r.date) + (Number(r.qty) ? ' · ' + r.qty + ' шт × ' + U.money(r.price) : '')
+      ]),
+      r.photo ? U.el('img', { class: 'thumb thumb--block', src: r.photo, style: { marginTop: '6px' }, loading: 'lazy', alt: 'Фото накладной' }) : null,
+      r.note ? U.el('div', { class: 'card__sub', text: '📝 ' + r.note }) : null
+    ]);
+  });
+  // Оборачиваем в контейнер
+  var wrap = U.el('div', {});
+  cards.forEach(function (c) { wrap.appendChild(c); });
+  return wrap;
 }

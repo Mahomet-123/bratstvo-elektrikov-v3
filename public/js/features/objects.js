@@ -56,17 +56,30 @@ window.Objects = (function () {
 
   function render(force) {
     var app = U.$('#app');
+    // Кеш в памяти — показываем мгновенно
     if (LIST && !force) { paint(app, LIST, true); return; }
+    // Кеш на устройстве — показываем мгновенно, затем фоновая загрузка
+    if (!force) {
+      var disk = Store.getObjectsCache();
+      if (disk) { LIST = disk; paint(app, disk, true); bgLoad(); return; }
+    }
     U.loading(app, 'Загрузка объектов…');
-    Promise.all([ensurePrices(), apiGet('objects', { token: Store.getToken() })]).then(function (res) {
+    bgLoad();
+  }
+
+  // Фоновая загрузка с сервера — не блокирует UI.
+  function bgLoad() {
+    var app = U.$('#app');
+    Promise.all([ensurePrices(), apiGet('objects', { token: Store.getToken() }, { silent: true })]).then(function (res) {
       var objects = (res[1] && res[1].ok) ? (res[1].objects || []) : [];
       LIST = objects; Store.setObjectsCache(objects);
-      paint(app, objects, false);
-    }).catch(function (err) {
-      // при ошибке — показываем кеш, если есть
-      var cached = Store.getObjectsCache();
-      if (cached && cached.length) { LIST = cached; paint(app, cached, true); }
-      else U.emptyState(app, 'Не удалось загрузить', String(err && err.message || err));
+      // Перерисовываем только если сейчас на странице объектов
+      var p = (location.hash.replace(/^#/, '') || '/');
+      if (p === '/objects' || p.indexOf('/object') === 0) {
+        paint(app, objects, false);
+      }
+    }).catch(function () {
+      // Оставляем кеш, если есть
     });
   }
 
@@ -111,7 +124,7 @@ window.Objects = (function () {
       var name = nameI.value.trim();
       if (!name) { U.toast('Введите название', 'error'); return; }
       var btn = body.querySelector('.btn--primary');
-      btn.disabled = true; btn.textContent = 'Создание…';
+      btn.disabled = true; btn.classList.add('is-loading');
       var payload = {
         token: Store.getToken(),
         name: name, address: addrI.value.trim(), client: clientI.value.trim(),
@@ -125,7 +138,7 @@ window.Objects = (function () {
         Router.go('#/object/' + d.object.id);
       }).catch(function (err) {
         U.toast(err.message, 'error');
-        btn.disabled = false; btn.textContent = 'Создать';
+        btn.disabled = false; btn.classList.remove('is-loading');
       });
     }
   }

@@ -12,7 +12,7 @@ window.Auth = {
       var code = codeI.value.trim();
       if (!login || !code) { U.toast('Введите логин и код', 'error'); return; }
       var btn = form.querySelector('button[type=submit]');
-      btn.disabled = true; btn.textContent = 'Вход…';
+      btn.disabled = true; btn.classList.add('is-loading');
       apiPost('login', { login: login, code: code }).then(function (d) {
         if (!d.ok) throw new Error(d.error || 'Ошибка входа');
         Store.setToken(d.token); Store.setUser(d.user);
@@ -20,7 +20,7 @@ window.Auth = {
         Router.go('#/objects');
       }).catch(function (err) {
         U.toast(err.message || 'Ошибка входа', 'error');
-        btn.disabled = false; btn.textContent = 'Войти';
+        btn.disabled = false; btn.classList.remove('is-loading');
       });
     }
 
@@ -63,14 +63,14 @@ window.Profile = {
       if (newCode !== new2) { U.toast('Коды не совпадают', 'error'); return; }
       if (Store.isAdmin() && !oldCode) oldCode = ''; // руководитель меняет без старого
       var btn = form.querySelector('button[type=submit]');
-      btn.disabled = true; btn.textContent = 'Сохранение…';
+      btn.disabled = true; btn.classList.add('is-loading');
       apiPost('users:changeCode', { login: u.login, oldCode: oldCode, newCode: newCode }).then(function (d) {
         if (!d.ok) throw new Error(d.error || 'Не удалось сменить код');
         U.toast('Код доступа изменён', 'success');
         Router.go('#/objects');
       }).catch(function (err) {
         U.toast(err.message, 'error');
-        btn.disabled = false; btn.textContent = 'Сохранить код';
+        btn.disabled = false; btn.classList.remove('is-loading');
       });
     }
 

@@ -1,6 +1,7 @@
 // objectCard.js — карточка объекта: Расчёт, Закупка, День, Отчёт.
 // Данные объекта грузим 1 раз и храним на устройстве; переключение вкладок
-// идёт из кеша (без сети). Синхронизация — вручную (кнопка ↻) или после изменений.
+// идёт из кеша (без сети). Мутации применяются оптимистично к локальному
+// кешу, а фоновая синхронизация обновляет данные с сервера без блокировки UI.
 window.ObjectCard = (function () {
 
   var TABS = [
@@ -10,12 +11,24 @@ window.ObjectCard = (function () {
     { key: 'report', label: 'Отчёт' }
   ];
 
-  // Кеш карточек объектов: в памяти + на устройстве (localStorage).
   var OBJ = {};     // id -> данные объекта
-  var SYNC = {};    // id -> { state: 'synced'|'pending'|'saving'|'error', ts, pending }
+  var SYNC = {};    // id -> { state, ts, pending }
   var ACTIVE = {};  // id -> последняя активная вкладка
 
   function sum(arr, f) { return arr.reduce(function (s, r) { return s + (Number(f(r)) || 0); }, 0); }
+
+  function calcLineSum(line) {
+    var qty = Number(line.qty) || 0;
+    var price = Number(line.price) || 0;
+    var coef = Number(line.coef) || 1;
+    var s = price * qty * coef;
+    if (line.material) {
+      var markup = s * 0.10;
+      if (markup < 1500) markup = 1500;
+      s += markup;
+    }
+    return Math.round(s);
+  }
 
   function statusPill(s) {
     if (s === 'закрыт') return U.el('span', { class: 'pill pill--closed', text: 'закрыт' });
@@ -42,7 +55,71 @@ window.ObjectCard = (function () {
     if (el) { el.className = 'pill ' + syncClass(SYNC[id]); el.textContent = syncLabel(SYNC[id]); }
   }
 
-  // Загрузка с сервера (или из кеша устройства, если не форсировано).
+  /* ---------- Локальное сохранение кеша ---------- */
+  function persist(id) {
+    if (OBJ[id]) Store.setObjectCache(id, OBJ[id]);
+  }
+
+  /* ---------- Оптимистичное обновление кеша после мутации ---------- */
+  function patchCache(id, type, action, result) {
+    if (!OBJ[id]) return;
+    if (type === 'calc') {
+      if (action === 'add' && result && result.line) {
+        OBJ[id].calc = OBJ[id].calc || [];
+        OBJ[id].calc.push(result.line);
+      } else if (action === 'update' && result && result.rowNum && result.line) {
+        OBJ[id].calc = (OBJ[id].calc || []).map(function (r) {
+          return r.__row === result.rowNum ? result.line : r;
+        });
+      } else if (action === 'remove' && result && result.rowNum) {
+        OBJ[id].calc = (OBJ[id].calc || []).filter(function (r) { return r.__row !== result.rowNum; });
+      } else if (action === 'recalc' && result && result.lines) {
+        // сервер вернул пересчитанные суммы — обновим локально
+        (OBJ[id].calc || []).forEach(function (r) { /* суммы уже в кеше обновлены при add/update */ });
+      }
+    } else if (type === 'purchase') {
+      if (action === 'add' && result && result.line) {
+        OBJ[id].purchases = OBJ[id].purchases || [];
+        OBJ[id].purchases.push(result.line);
+      } else if (action === 'remove' && result && result.rowNum) {
+        OBJ[id].purchases = (OBJ[id].purchases || []).filter(function (r) { return r.__row !== result.rowNum; });
+      } else if (action === 'update' && result && result.rowNum && result.line) {
+        OBJ[id].purchases = (OBJ[id].purchases || []).map(function (r) {
+          return r.__row === result.rowNum ? result.line : r;
+        });
+      }
+    } else if (type === 'visit') {
+      if (action === 'add' && result && result.line) {
+        OBJ[id].visits = OBJ[id].visits || [];
+        OBJ[id].visits.push(result.line);
+      }
+    }
+    persist(id);
+  }
+
+  /* ---------- Фоновая синхронизация (без блокировки UI) ---------- */
+  function bgSync(id) {
+    if (!navigator.onLine) {
+      Offline.count().then(function (n) { setSync(id, n > 0 ? 'pending' : 'synced', n); });
+      return;
+    }
+    setSync(id, 'saving', 0);
+    apiGet('object', { token: Store.getToken(), id: id }, { silent: true }).then(function (d) {
+      if (!d || !d.ok) return;
+      OBJ[id] = d; Store.setObjectCache(id, d);
+      setSync(id, 'synced', 0);
+      // перерисовать текущую вкладку, если объект открыт
+      var p = (location.hash.replace(/^#/, '') || '');
+      var m = p.match(/^\/object\/(\d+)$/);
+      if (m && m[1] === String(id)) {
+        show(U.$('#app'), id, OBJ[id], ACTIVE[id] || 'calc');
+      }
+    }).catch(function () {
+      Offline.count().then(function (n) { setSync(id, n > 0 ? 'pending' : 'error', n); });
+    });
+  }
+
+  /* ---------- Загрузка с сервера или из кеша ---------- */
   function load(id, force) {
     if (OBJ[id] && !force) return Promise.resolve(OBJ[id]);
     return apiGet('object', { token: Store.getToken(), id: id }).then(function (d) {
@@ -53,28 +130,41 @@ window.ObjectCard = (function () {
     });
   }
 
-  // Вход в карточку. force=true — принудительная перезагрузка с сервера.
+  /* ---------- Вход в карточку ---------- */
   function render(id, force) {
     if (!OBJ[id]) {
       var disk = Store.getObjectCache(id);
       if (disk && !force) OBJ[id] = disk;
     }
-    if (OBJ[id] && !force) { ACTIVE[id] = ACTIVE[id] || 'calc'; show(U.$('#app'), id, OBJ[id], ACTIVE[id]); return; }
+    if (OBJ[id] && !force) {
+      ACTIVE[id] = ACTIVE[id] || 'calc';
+      show(U.$('#app'), id, OBJ[id], ACTIVE[id]);
+      return;
+    }
     var app = U.$('#app');
     U.loading(app, force ? 'Синхронизация…' : 'Загрузка объекта…');
-    load(id, force).then(function (data) { ACTIVE[id] = ACTIVE[id] || 'calc'; show(app, id, data, ACTIVE[id]); })
-      .catch(function (err) { U.emptyState(app, 'Не удалось загрузить', String(err && err.message || err)); });
+    load(id, force).then(function (data) {
+      ACTIVE[id] = ACTIVE[id] || 'calc';
+      show(app, id, data, ACTIVE[id]);
+    }).catch(function (err) {
+      U.emptyState(app, 'Не удалось загрузить', String(err && err.message || err));
+    });
   }
 
-  // Ручная перезагрузка с сервера (кнопка ↻).
+  /* ---------- Ручная перезагрузка (кнопка ↻) ---------- */
   function reload(id) {
-    var app = U.$('#app');
+    var btn = U.$('#objSyncReload');
+    if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
     setSync(id, 'saving', 0);
-    load(id, true).then(function (data) { show(app, id, data, ACTIVE[id] || 'calc'); U.toast('Данные обновлены', 'success'); })
-      .catch(function (err) {
-        Offline.count().then(function (n) { setSync(id, n > 0 ? 'pending' : 'error', n); });
-        U.emptyState(app, 'Не удалось обновить', String(err && err.message || err));
-      });
+    load(id, true).then(function (data) {
+      show(U.$('#app'), id, data, ACTIVE[id] || 'calc');
+      U.toast('Данные обновлены', 'success');
+    }).catch(function (err) {
+      Offline.count().then(function (n) { setSync(id, n > 0 ? 'pending' : 'error', n); });
+      U.toast(err.message || 'Не удалось обновить', 'error');
+    }).then(function () {
+      if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); }
+    });
   }
 
   function show(app, id, data, active) {
@@ -93,7 +183,7 @@ window.ObjectCard = (function () {
       o.commissioning == 1 ? U.el('div', { class: 'card__sub', text: '⚡ Пусконаладка +30%' }) : null,
       U.el('div', { class: 'objsync' }, [
         U.el('span', { id: 'objSync', class: 'pill ' + syncClass(SYNC[id]), text: syncLabel(SYNC[id]) }),
-        U.el('button', { class: 'linkbtn', text: '↻ Обновить', 'aria-label': 'Обновить с сервера', onclick: function () { reload(id); } })
+        U.el('button', { id: 'objSyncReload', class: 'btn btn--sm', text: '↻ Обновить', 'aria-label': 'Обновить с сервера', onclick: function () { reload(id); } })
       ])
     ]);
     app.appendChild(objhead);
@@ -102,7 +192,7 @@ window.ObjectCard = (function () {
     TABS.forEach(function (t) {
       tabsBar.appendChild(U.el('button', {
         class: 'tabs__btn' + (t.key === active ? ' tabs__btn--active' : ''), text: t.label,
-        onclick: function () { show(app, id, OBJ[id], t.key); } // переключение вкладки — только из кеша, без сети
+        onclick: function () { show(app, id, OBJ[id], t.key); }
       }));
     });
     app.appendChild(tabsBar);
@@ -110,21 +200,22 @@ window.ObjectCard = (function () {
     var content = U.el('div', { class: 'tab-content' });
     app.appendChild(content);
 
-    if (active === 'calc') renderCalc(content, id, data, function (a) { afterChange(id, a); });
-    else if (active === 'purchase') renderPurchase(content, id, data, function () { afterChange(id); });
-    else if (active === 'day') renderDay(content, id, data, function () { afterChange(id); });
-    else renderReport(content, id, data, function (a) { afterChange(id, a); });
+    if (active === 'calc') renderCalc(content, id, data, function (a) { afterMutation(id, a); });
+    else if (active === 'purchase') renderPurchase(content, id, data, function () { afterMutation(id); });
+    else if (active === 'day') renderDay(content, id, data, function () { afterMutation(id); });
+    else renderReport(content, id, data, function (a) { afterMutation(id, a); });
   }
 
-  // После изменения: перечитываем объект с сервера, обновляем кеш и перерисовываем.
-  function afterChange(id, active) {
+  /* ---------- После мутации: оптимистично обновляем кеш и перерисовываем.
+                Фоновая синхронизация обновит данные с сервера без блокировки UI. ---------- */
+  function afterMutation(id, active) {
     active = active || ACTIVE[id] || 'calc';
-    setSync(id, 'saving', 0);
-    load(id, true).then(function (data) { show(U.$('#app'), id, data, active); })
-      .catch(function (err) {
-        Offline.count().then(function (n) { setSync(id, n > 0 ? 'pending' : 'error', n); });
-        U.toast(err.message || 'Ошибка сохранения', 'error');
-      });
+    // Перерисовываем из кеша — мгновенно, без сети.
+    if (OBJ[id]) {
+      show(U.$('#app'), id, OBJ[id], active);
+    }
+    // Фоновая синхронизация с сервера — без блокировки UI.
+    setTimeout(function () { bgSync(id); }, 300);
   }
 
   /* ---------------- РАСЧЁТ ---------------- */
@@ -182,7 +273,7 @@ window.ObjectCard = (function () {
       apiPost('records:recalc', { token: Store.getToken(), objectId: id }).then(function (d) {
         if (!d.ok) throw new Error(d.error || 'Ошибка');
         U.toast('Пересчитано: ' + U.money(d.result.total), 'success');
-        refresh(); // afterChange → перечитывание + перерисовка
+        refresh();
       }).catch(function (e) {
         U.toast(e.message, 'error');
         btn.disabled = false; btn.classList.remove('is-loading');
@@ -193,10 +284,15 @@ window.ObjectCard = (function () {
   function removeCalc(id, r, refresh) {
     U.confirm('Удалить позицию «' + (r.name || '') + '»?').then(function (ok) {
       if (!ok) return;
-      var btn = U.$('.btn--danger', null);
+      // Оптимистичное обновление: убираем из кеша сразу
+      if (OBJ[id] && OBJ[id].calc) {
+        OBJ[id].calc = OBJ[id].calc.filter(function (x) { return x.__row !== r.__row; });
+        persist(id);
+      }
+      refresh();
       apiPost('records:remove', { token: Store.getToken(), objectId: id, rowNum: r.__row })
-        .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); U.toast('Удалено', 'success'); refresh(); })
-        .catch(function (e) { U.toast(e.message, 'error'); });
+        .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); U.toast('Удалено', 'success'); setTimeout(function () { bgSync(id); }, 300); })
+        .catch(function (e) { U.toast(e.message, 'error'); setTimeout(function () { bgSync(id); }, 300); });
     });
   }
 
@@ -212,32 +308,55 @@ window.ObjectCard = (function () {
     var qtyI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Кол-во', value: '1' });
     var priceI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Цена' });
     var coefI = U.el('input', { class: 'input', type: 'number', step: 'any', value: '1', placeholder: 'Коэфф.' });
-    var matI = U.el('input', { type: 'checkbox', checked: 'checked' });
+    var matI = U.el('input', { type: 'checkbox' }); // по умолчанию НЕ отмечен (пункт 1.1)
     var noteI = U.el('textarea', { class: 'textarea', placeholder: 'Примечание' });
 
     function applyPrice(p) {
       nameI.value = p.name; sectI.value = p.section; unitI.value = p.unit; priceI.value = p.price;
     }
+
+    // --- Множественный выбор (пункт 1) ---
+    var selected = []; // массив выбранных элементов прайс-листа
+    function isSelected(p) { return selected.some(function (x) { return x.name === p.name && x.section === p.section && x.price === p.price; }); }
+    function toggleSel(p, cb) {
+      if (isSelected(p)) selected = selected.filter(function (x) { return x !== p; });
+      else selected.push(p);
+      updateSelBtn();
+      if (cb) cb.checked = isSelected(p);
+    }
+    var addSelBtn = U.el('button', { class: 'btn btn--primary', text: 'Добавить выбранные (0)', disabled: 'disabled', onclick: addSelected });
+
+    function updateSelBtn() {
+      addSelBtn.textContent = 'Добавить выбранные (' + selected.length + ')';
+      if (selected.length > 0) addSelBtn.removeAttribute('disabled');
+      else addSelBtn.setAttribute('disabled', 'disabled');
+    }
+
     function renderList(q) {
       U.clear(listBox);
       var ql = (q || '').toLowerCase();
       var work = prices.filter(function (p) {
-        if (p.type && p.type !== 'work') return false; // только реальные работы
+        if (p.type && p.type !== 'work') return false;
         return !ql || (p.name + ' ' + p.section).toLowerCase().indexOf(ql) >= 0;
       });
       var hits = work.slice(0, 50);
       var countEl = U.el('div', { class: 'card__sub', style: { marginBottom: '6px' }, text: 'Найдено работ: ' + hits.length + ' из ' + work.length + (ql ? '' : ' (показаны первые 50)') });
       listBox.appendChild(countEl);
       if (!hits.length) { listBox.appendChild(U.el('div', { class: 'card__sub', text: 'Ничего не найдено' })); return; }
-      // группируем по разделу для удобства
       var bySec = {};
       hits.forEach(function (p) { (bySec[p.section] = bySec[p.section] || []).push(p); });
       Object.keys(bySec).forEach(function (sec) {
         listBox.appendChild(U.el('div', { class: 'pricelist__sec', text: sec }));
         bySec[sec].forEach(function (p) {
-          listBox.appendChild(U.el('div', { class: 'card card--clickable pricelist__item', style: { padding: '8px 10px', marginBottom: '6px' }, onclick: function () { applyPrice(p); } }, [
-            U.el('div', { style: { fontWeight: '600' }, text: p.name }),
-            U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
+          var cb = U.el('input', { type: 'checkbox', 'aria-label': 'Выбрать ' + p.name });
+          cb.checked = isSelected(p);
+          cb.addEventListener('change', function () { toggleSel(p, cb); });
+          listBox.appendChild(U.el('div', { class: 'card pricelist__item', style: { padding: '8px 10px', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'flex-start' } }, [
+            U.el('div', { style: { paddingTop: '2px' } }, [cb]),
+            U.el('div', { style: { flex: '1', minWidth: '0', cursor: 'pointer' }, onclick: function () { applyPrice(p); } }, [
+              U.el('div', { style: { fontWeight: '600' }, text: p.name }),
+              U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
+            ])
           ]));
         });
       });
@@ -254,6 +373,7 @@ window.ObjectCard = (function () {
     var body = U.el('div', {}, [
       U.el('div', { class: 'modal__title', text: editing ? 'Редактировать позицию' : 'Новая позиция' }),
       searchI, listBox,
+      U.el('div', { class: 'card__sub', style: { marginBottom: '4px' }, text: 'Общие параметры для выбранных:' }),
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Наименование' }), nameI]),
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Раздел' }), sectI]),
       U.el('div', { style: { display: 'flex', gap: '10px' } }, [
@@ -266,33 +386,107 @@ window.ObjectCard = (function () {
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Примечание' }), noteI]),
       U.el('div', { class: 'row' }, [
         U.el('button', { class: 'btn btn--ghost', text: 'Отмена', onclick: function () { m.close(); } }),
-        U.el('button', { class: 'btn btn--primary', text: 'Сохранить', onclick: save })
+        editing ? U.el('button', { class: 'btn btn--primary', text: 'Сохранить', onclick: save }) : addSelBtn
       ])
     ]);
     var m = U.modal(body);
+
+    // --- Пакетное добавление выбранных (пункт 1) ---
+    function addSelected() {
+      if (!selected.length) { U.toast('Отметьте работы в списке', 'error'); return; }
+      var qty = Number(qtyI.value) || 1;
+      var coef = Number(coefI.value) || 1;
+      var material = matI.checked ? 1 : 0;
+      var note = noteI.value.trim();
+
+      // Оптимистично добавляем все выбранные в кеш
+      var tmpLines = selected.map(function (p, i) {
+        var ld = {
+          n: '', section: p.section || '', name: p.name, unit: p.unit || '',
+          qty: qty, price: Number(p.price) || 0, coef: coef, material: material, note: note
+        };
+        ld.sum = calcLineSum(ld);
+        ld.__row = 'tmp_' + Date.now() + '_' + i;
+        return ld;
+      });
+      if (OBJ[id]) {
+        OBJ[id].calc = OBJ[id].calc || [];
+        tmpLines.forEach(function (ld) { OBJ[id].calc.push(ld); });
+        persist(id);
+      }
+
+      // Закрываем модалку и перерисовываем из кеша — мгновенно
+      addSelBtn.disabled = true; addSelBtn.classList.add('is-loading');
+      m.close();
+      U.toast('Добавлено: ' + tmpLines.length, 'success');
+      refresh();
+
+      // Отправляем на сервер последовательно
+      var chain = Promise.resolve();
+      selected.forEach(function (p) {
+        var ld = {
+          n: '', section: p.section || '', name: p.name, unit: p.unit || '',
+          qty: qty, price: Number(p.price) || 0, coef: coef, material: material, note: note
+        };
+        chain = chain.then(function () {
+          return apiPost('records:add', { token: Store.getToken(), objectId: id, line: ld });
+        });
+      });
+      chain.then(function () {
+        setTimeout(function () { bgSync(id); }, 300);
+      }).catch(function (e) {
+        U.toast(e.message || 'Ошибка отправки', 'error');
+        setTimeout(function () { bgSync(id); }, 300);
+      });
+    }
 
     function save() {
       var name = nameI.value.trim();
       if (!name) { U.toast('Введите наименование', 'error'); return; }
       var btn = body.querySelector('.btn--primary');
-      btn.disabled = true; btn.classList.add('is-loading');
-      var payload = {
-        token: Store.getToken(), objectId: id,
-        line: {
-          n: '', section: sectI.value.trim(), name: name, unit: unitI.value.trim(),
-          qty: Number(qtyI.value) || 0, price: Number(priceI.value) || 0,
-          coef: Number(coefI.value) || 1, material: matI.checked ? 1 : 0, note: noteI.value.trim()
-        }
+      if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
+      var lineData = {
+        n: '', section: sectI.value.trim(), name: name, unit: unitI.value.trim(),
+        qty: Number(qtyI.value) || 0, price: Number(priceI.value) || 0,
+        coef: Number(coefI.value) || 1, material: matI.checked ? 1 : 0, note: noteI.value.trim()
       };
+      lineData.sum = calcLineSum(lineData);
+
+      // Оптимистичное обновление кеша
+      if (!editing) {
+        lineData.__row = 'tmp_' + Date.now(); // временный номер строки
+        if (OBJ[id]) {
+          OBJ[id].calc = OBJ[id].calc || [];
+          OBJ[id].calc.push(lineData);
+          persist(id);
+        }
+      } else {
+        if (OBJ[id] && OBJ[id].calc) {
+          OBJ[id].calc = OBJ[id].calc.map(function (r) {
+            return r.__row === line.__row ? Object.assign({}, r, lineData) : r;
+          });
+          persist(id);
+        }
+      }
+
+      // Закрываем модалку и перерисовываем из кеша — мгновенно
+      m.close();
+      U.toast(editing ? 'Обновлено' : 'Добавлено', 'success');
+      refresh();
+
+      // Отправляем на сервер
+      var payload = { token: Store.getToken(), objectId: id, line: lineData };
       var p = editing
-        ? apiPost('records:update', { token: Store.getToken(), objectId: id, rowNum: line.__row, patch: payload.line })
+        ? apiPost('records:update', { token: Store.getToken(), objectId: id, rowNum: line.__row, patch: lineData })
         : apiPost('records:add', payload);
       p.then(function (d) {
         if (!d.ok) throw new Error(d.error || 'Ошибка');
-        m.close();
-        U.toast(editing ? 'Обновлено' : 'Добавлено', 'success');
-        refresh();
-      }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; btn.classList.remove('is-loading'); });
+        // Фоновая синхронизация обновит кеш с сервера
+        setTimeout(function () { bgSync(id); }, 300);
+      }).catch(function (e) {
+        U.toast(e.message, 'error');
+        setTimeout(function () { bgSync(id); }, 300);
+      });
     }
   }
 
@@ -321,7 +515,7 @@ window.ObjectCard = (function () {
           U.el('div', { class: 'card__sub' }, [
             U.date(r.date) + (Number(r.qty) ? ' · ' + r.qty + ' шт × ' + U.money(r.price) : '')
           ]),
-          r.photo ? U.el('img', { class: 'thumb thumb--block', src: r.photo, style: { marginTop: '6px' } }) : null,
+          r.photo ? U.el('img', { class: 'thumb thumb--block', src: r.photo, style: { marginTop: '6px' }, loading: 'lazy' }) : null,
           r.note ? U.el('div', { class: 'card__sub', text: '📝 ' + r.note }) : null,
           U.el('div', { class: 'row', style: { marginTop: '8px', justifyContent: 'flex-end' } }, [
             U.el('button', { class: 'btn btn--sm', text: '✎ Изменить', 'aria-label': 'Изменить', onclick: function () { purchaseModal(id, refresh, r); } }),
@@ -346,9 +540,15 @@ window.ObjectCard = (function () {
   function removePurchase(id, r, refresh) {
     U.confirm('Удалить закупку «' + (r.name || '') + '»?').then(function (ok) {
       if (!ok) return;
+      // Оптимистичное обновление
+      if (OBJ[id] && OBJ[id].purchases) {
+        OBJ[id].purchases = OBJ[id].purchases.filter(function (x) { return x.__row !== r.__row; });
+        persist(id);
+      }
+      refresh();
       apiPost('purchases:remove', { token: Store.getToken(), objectId: id, rowNum: r.__row })
-        .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); U.toast('Удалено', 'success'); refresh(); })
-        .catch(function (e) { U.toast(e.message || 'Ошибка удаления', 'error'); });
+        .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); U.toast('Удалено', 'success'); setTimeout(function () { bgSync(id); }, 300); })
+        .catch(function (e) { U.toast(e.message || 'Ошибка удаления', 'error'); setTimeout(function () { bgSync(id); }, 300); });
     });
   }
 
@@ -359,13 +559,59 @@ window.ObjectCard = (function () {
     var qtyI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Кол-во', value: (existing ? existing.qty : '1') || '1' });
     var priceI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Цена за ед.' });
     var noteI = U.el('textarea', { class: 'textarea', placeholder: 'Примечание' });
-    var fileI = U.el('input', { class: 'input', type: 'file', accept: 'image/*', 'aria-label': 'Фото чека' });
+    // capture=environment — прямая съёмка камерой (пункт 1.1)
+    var camI = U.el('input', { class: 'input', type: 'file', accept: 'image/*', capture: 'environment', 'aria-label': 'Сфотографировать чек' });
+    var fileI = U.el('input', { class: 'input', type: 'file', accept: 'image/*', 'aria-label': 'Выбрать фото из галереи' });
     var preview = U.el('div', { style: { marginTop: '8px' } });
+    var photoData = null; // base64 данные фото
 
     function showPreview(src) {
       U.clear(preview);
       if (src) preview.appendChild(U.el('img', { class: 'thumb thumb--block', src: src, style: { marginTop: '0' } }));
     }
+
+    // Конвертация в webp через canvas (пункт 3)
+    function convertToWebp(file, cb) {
+      var rd = new FileReader();
+      rd.onload = function () {
+        var img = new Image();
+        img.onload = function () {
+          // Проверяем поддержку webp
+          var c = document.createElement('canvas');
+          if (c.toDataURL('image/webp').indexOf('image/webp') === -1) {
+            // webp не поддерживается — отдаём исходный base64
+            cb(String(rd.result).replace(/^data:.*;base64,/, ''), rd.result);
+            return;
+          }
+          // Конвертируем в webp
+          c.width = img.naturalWidth;
+          c.height = img.naturalHeight;
+          var ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          var webpDataUrl = c.toDataURL('image/webp', 0.85);
+          var webpBase64 = webpDataUrl.replace(/^data:.*;base64,/, '');
+          cb(webpBase64, webpDataUrl);
+        };
+        img.onerror = function () {
+          cb(String(rd.result).replace(/^data:.*;base64,/, ''), rd.result);
+        };
+        img.src = String(rd.result);
+      };
+      rd.onerror = function () { cb(null, null); };
+      rd.readAsDataURL(file);
+    }
+
+    function handleFile(file, input) {
+      if (!file) return;
+      convertToWebp(file, function (base64, dataUrl) {
+        if (!base64) { U.toast('Не удалось обработать фото', 'error'); return; }
+        photoData = base64;
+        showPreview(dataUrl);
+      });
+    }
+
+    camI.addEventListener('change', function () { handleFile(camI.files && camI.files[0], camI); });
+    fileI.addEventListener('change', function () { handleFile(fileI.files && fileI.files[0], fileI); });
 
     var body = U.el('div', {}, [
       U.el('div', { class: 'modal__title', text: editing ? 'Редактировать закупку' : 'Новая закупка' }),
@@ -375,7 +621,8 @@ window.ObjectCard = (function () {
         U.el('div', { class: 'field', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Кол-во' }), qtyI]),
         U.el('div', { class: 'field', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Цена' }), priceI])
       ]),
-      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Фото чека (камера или галерея)' }), fileI]),
+      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: '📷 Сфотографировать чек' }), camI]),
+      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: '🖼 Выбрать из галереи' }), fileI]),
       preview,
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Примечание' }), noteI]),
       U.el('div', { class: 'row' }, [
@@ -392,15 +639,6 @@ window.ObjectCard = (function () {
       if (existing.photo) showPreview(existing.photo);
     }
 
-    fileI.addEventListener('change', function () {
-      var f = fileI.files && fileI.files[0];
-      if (!f) return;
-      var rd = new FileReader();
-      rd.onload = function () { showPreview(String(rd.result)); };
-      rd.onerror = function () {};
-      rd.readAsDataURL(f);
-    });
-
     function save() {
       var name = nameI.value.trim();
       if (!name) { U.toast('Введите наименование', 'error'); return; }
@@ -410,28 +648,50 @@ window.ObjectCard = (function () {
         date: dateI.value || U.todayISO(), name: name,
         qty: Number(qtyI.value) || 0, price: Number(priceI.value) || 0, note: noteI.value.trim()
       };
-      function send(photo) {
-        if (photo) purchase.photo = photo;
+      var photo = photoData || (editing ? null : null);
+      // Если редактируем и нет нового фото — сохраняем старый URL
+      if (editing && !photo && existing && existing.photo) {
+        purchase.photo = existing.photo;
+      }
+
+      // Оптимистичное обновление кеша
+      var lineData = Object.assign({}, purchase);
+      lineData.sum = Math.round((Number(purchase.price) || 0) * (Number(purchase.qty) || 0));
+      if (!editing) {
+        lineData.__row = 'tmp_' + Date.now();
+        if (OBJ[id]) {
+          OBJ[id].purchases = OBJ[id].purchases || [];
+          OBJ[id].purchases.push(lineData);
+          persist(id);
+        }
+      } else {
+        if (OBJ[id] && OBJ[id].purchases) {
+          OBJ[id].purchases = OBJ[id].purchases.map(function (r) {
+            return r.__row === existing.__row ? Object.assign({}, r, lineData) : r;
+          });
+          persist(id);
+        }
+      }
+
+      m.close();
+      U.toast(editing ? 'Обновлено' : 'Закупка добавлена', 'success');
+      refresh();
+
+      // Отправка на сервер
+      function send(photoBase64) {
+        if (photoBase64) purchase.photo = photoBase64;
         var p = editing
           ? apiPost('purchases:update', { token: Store.getToken(), objectId: id, rowNum: existing.__row, purchase: purchase })
           : apiPost('purchases:add', { token: Store.getToken(), objectId: id, purchase: purchase });
         p.then(function (d) {
           if (!d.ok) throw new Error(d.error || 'Ошибка');
-          m.close(); U.toast(editing ? 'Обновлено' : 'Закупка добавлена', 'success'); refresh();
-        }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; btn.classList.remove('is-loading'); });
+          setTimeout(function () { bgSync(id); }, 300);
+        }).catch(function (e) {
+          U.toast(e.message, 'error');
+          setTimeout(function () { bgSync(id); }, 300);
+        });
       }
-      var f = fileI.files && fileI.files[0];
-      if (f && !editing) {
-        var rd = new FileReader();
-        rd.onload = function () { send(String(rd.result).replace(/^data:.*;base64,/, '')); };
-        rd.onerror = function () { send(''); };
-        rd.readAsDataURL(f);
-      } else if (f && editing) {
-        var rd2 = new FileReader();
-        rd2.onload = function () { send(String(rd2.result).replace(/^data:.*;base64,/, '')); };
-        rd2.onerror = function () { send(existing.photo || ''); };
-        rd2.readAsDataURL(f);
-      } else { send(editing ? (existing.photo || '') : ''); }
+      send(photo || null);
     }
   }
 
@@ -482,13 +742,18 @@ window.ObjectCard = (function () {
 
     function save() {
       var btn = body.querySelector('.btn--primary'); btn.disabled = true; btn.classList.add('is-loading');
-      apiPost('visits:add', {
-        token: Store.getToken(), objectId: id,
-        visit: { date: dateI.value || U.todayISO(), master: masterI.value.trim(), dayNumber: dayI.value.trim(), note: noteI.value.trim() }
-      }).then(function (d) {
-        if (!d.ok) throw new Error(d.error || 'Ошибка');
-        m.close(); U.toast('День добавлен', 'success'); refresh();
-      }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; btn.classList.remove('is-loading'); });
+      var visit = { date: dateI.value || U.todayISO(), master: masterI.value.trim(), dayNumber: dayI.value.trim(), note: noteI.value.trim() };
+      // Оптимистичное обновление
+      if (OBJ[id]) {
+        OBJ[id].visits = OBJ[id].visits || [];
+        visit.__row = 'tmp_' + Date.now();
+        OBJ[id].visits.push(visit);
+        persist(id);
+      }
+      m.close(); U.toast('День добавлен', 'success'); refresh();
+      apiPost('visits:add', { token: Store.getToken(), objectId: id, visit: visit })
+        .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); setTimeout(function () { bgSync(id); }, 300); })
+        .catch(function (e) { U.toast(e.message, 'error'); setTimeout(function () { bgSync(id); }, 300); });
     }
   }
 
@@ -534,11 +799,13 @@ window.ObjectCard = (function () {
   function closeObject(id, refresh) {
     U.confirm('Закрыть объект? Данные попадут в архив, кабинет клиента аннулируется.', 'Закрыть').then(function (ok) {
       if (!ok) return;
+      var btn = U.$('.btn--danger');
+      if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
       apiPost('objects:close', { token: Store.getToken(), id: id }).then(function (d) {
         if (!d.ok) throw new Error(d.error || 'Ошибка');
         U.toast('Объект закрыт', 'success');
         refresh('report');
-      }).catch(function (e) { U.toast(e.message, 'error'); });
+      }).catch(function (e) { U.toast(e.message, 'error'); if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); } });
     });
   }
 
@@ -559,5 +826,5 @@ window.ObjectCard = (function () {
     }).catch(function (e) { U.toast(e.message, 'error'); });
   }
 
-  return { render: render };
+  return { render: render, reload: reload, bgSync: bgSync, OBJ: OBJ };
 })();

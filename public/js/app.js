@@ -62,7 +62,36 @@
     b.addEventListener('click', function () { Router.go(b.getAttribute('data-go')); });
   });
 
-  /* ---------- Кнопка синхронизации ---------- */
+  /* ---------- Кнопка синхронизации (пункт 2) ---------- */
+  /* Загружает ВСЕ данные одним пакетом: прайс, список объектов, все карточки.
+     Сохраняет в кеш на устройстве. Переходы по вкладкам — только из кеша. */
+  function syncAll() {
+    var tasks = [];
+    // 1. Прайс-лист
+    tasks.push(apiGet('prices', null, { silent: true }).then(function (d) {
+      if (d && d.ok) { Store.setPrices(d.prices || []); return d.prices.length; }
+      return 0;
+    }).catch(function () { return 0; }));
+    // 2. Список объектов
+    tasks.push(apiGet('objects', { token: Store.getToken() }, { silent: true }).then(function (d) {
+      if (d && d.ok) {
+        var objs = d.objects || [];
+        Store.setObjectsCache(objs);
+        // 3. Все карточки объектов — параллельно
+        objs.forEach(function (o) {
+          tasks.push(apiGet('object', { token: Store.getToken(), id: String(o.id) }, { silent: true }).then(function (od) {
+            if (od && od.ok) { Store.setObjectCache(String(o.id), od); }
+            return 1;
+          }).catch(function () { return 0; }));
+        });
+        return objs.length;
+      }
+      return 0;
+    }).catch(function () { return 0; }));
+
+    return Promise.all(tasks);
+  }
+
   function refreshCurrent() {
     var p = (location.hash.replace(/^#/, '') || '/');
     var m;
@@ -77,8 +106,12 @@
     if (window.Offline) {
       Offline.flush().then(function (n) {
         if (n > 0) U.toast('Отправлено в таблицу: ' + n, 'success');
-        refreshCurrent();
-      }).catch(function () { refreshCurrent(); }).then(done);
+        // Пакетная загрузка всех данных с сервера
+        syncAll().then(function () {
+          U.toast('Данные синхронизированы', 'success');
+          refreshCurrent();
+        }).catch(function () { refreshCurrent(); }).then(done);
+      }).catch(function () { refreshCurrent(); done(); });
     } else { refreshCurrent(); done(); }
   });
 

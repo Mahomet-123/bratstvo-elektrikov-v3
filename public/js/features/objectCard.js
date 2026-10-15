@@ -135,14 +135,17 @@ window.ObjectCard = (function () {
 
     root.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Позиции расчёта (' + calc.length + ')' }),
-      U.el('button', { class: 'linkbtn', text: '＋ Добавить', 'aria-label': 'Добавить работу', onclick: function () { calcModal(id, null, refresh); } })
+      U.el('button', { class: 'btn btn--sm btn--primary', text: '＋ Добавить', 'aria-label': 'Добавить работу', onclick: function () { calcModal(id, null, refresh); } })
     ]));
 
+    var listEl = U.el('div', {});
+    root.appendChild(listEl);
+
     if (!calc.length) {
-      U.emptyState(root, 'Нет позиций', 'Нажмите «Добавить», выберите работу из прайс-листа или введите вручную.');
+      U.emptyState(listEl, 'Нет позиций', 'Нажмите «Добавить», выберите работу из прайс-листа или введите вручную.');
     } else {
       calc.forEach(function (r) {
-        root.appendChild(U.el('div', { class: 'card' }, [
+        listEl.appendChild(U.el('div', { class: 'card' }, [
           U.el('div', { class: 'objhead' }, [
             U.el('div', { class: 'card__title', text: r.name || '—' }),
             U.el('div', { class: 'money', text: U.money(r.sum) })
@@ -300,14 +303,17 @@ window.ObjectCard = (function () {
 
     root.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Закупка (' + pur.length + ')' }),
-      U.el('button', { class: 'linkbtn', text: '＋ Добавить', 'aria-label': 'Добавить закупку', onclick: function () { purchaseModal(id, refresh); } })
+      U.el('button', { class: 'btn btn--sm btn--primary', text: '＋ Добавить', 'aria-label': 'Добавить закупку', onclick: function () { purchaseModal(id, refresh); } })
     ]));
 
+    var listEl = U.el('div', {});
+    root.appendChild(listEl);
+
     if (!pur.length) {
-      U.emptyState(root, 'Нет закупок', 'Добавьте купленный материал и прикрепите фото чека.');
+      U.emptyState(listEl, 'Нет закупок', 'Добавьте купленный материал и прикрепите фото чека.');
     } else {
       pur.forEach(function (r) {
-        root.appendChild(U.el('div', { class: 'card' }, [
+        listEl.appendChild(U.el('div', { class: 'card' }, [
           U.el('div', { class: 'objhead' }, [
             U.el('div', { class: 'card__title', text: r.name || '—' }),
             U.el('div', { class: 'money', text: U.money(r.sum) })
@@ -434,13 +440,15 @@ window.ObjectCard = (function () {
     var vis = data.visits || [];
     root.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Дни работ (' + vis.length + ')' }),
-      U.el('button', { class: 'linkbtn', text: '＋ Добавить', 'aria-label': 'Добавить день', onclick: function () { dayModal(id, refresh); } })
+      U.el('button', { class: 'btn btn--sm btn--primary', text: '＋ Добавить', 'aria-label': 'Добавить день', onclick: function () { dayModal(id, refresh); } })
     ]));
+    var listEl = U.el('div', {});
+    root.appendChild(listEl);
     if (!vis.length) {
-      U.emptyState(root, 'Нет записей о днях', 'Отмечайте выезды и выполненные работы.');
+      U.emptyState(listEl, 'Нет записей о днях', 'Отмечайте выезды и выполненные работы.');
     } else {
       vis.forEach(function (r) {
-        root.appendChild(U.el('div', { class: 'card' }, [
+        listEl.appendChild(U.el('div', { class: 'card' }, [
           U.el('div', { class: 'objhead' }, [
             U.el('div', { class: 'card__title', text: U.date(r.date) }),
             r.dayNumber ? U.el('div', { class: 'card__sub', text: 'День ' + r.dayNumber }) : null

@@ -42,14 +42,16 @@ window.Objects = (function () {
       ]),
       U.el('div', { style: { display: 'flex', gap: '10px', alignItems: 'center' } }, [
         fromCache ? U.el('span', { class: 'card__sub', text: 'кэш' }) : null,
-        U.el('button', { class: 'linkbtn', text: '＋ Новый', onclick: showCreate })
+        U.el('button', { class: 'btn btn--sm btn--primary', text: '＋ Новый', onclick: showCreate })
       ])
     ]));
+    var listEl = U.el('div', {});
+    app.appendChild(listEl);
     if (!objects.length) {
-      U.emptyState(app, 'Пока нет объектов', 'Нажмите «Новый», чтобы добавить первый объект.');
+      U.emptyState(listEl, 'Пока нет объектов', 'Нажмите «Новый», чтобы добавить первый объект.');
       return;
     }
-    objects.forEach(function (o) { app.appendChild(card(o)); });
+    objects.forEach(function (o) { listEl.appendChild(card(o)); });
   }
 
   function render(force) {

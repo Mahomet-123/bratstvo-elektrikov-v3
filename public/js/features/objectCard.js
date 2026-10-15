@@ -605,7 +605,7 @@ window.ObjectCard = (function () {
       if (!file) return;
       convertToWebp(file, function (base64, dataUrl) {
         if (!base64) { U.toast('Не удалось обработать фото', 'error'); return; }
-        photoData = base64;
+        photoData = dataUrl; // храним data URL (с префиксом) — для превью и оптимистичного кеша
         showPreview(dataUrl);
       });
     }
@@ -648,14 +648,16 @@ window.ObjectCard = (function () {
         date: dateI.value || U.todayISO(), name: name,
         qty: Number(qtyI.value) || 0, price: Number(priceI.value) || 0, note: noteI.value.trim()
       };
-      var photo = photoData || (editing ? null : null);
+      // photoData — это data URL; для отправки на сервер отрезаем префикс
+      var photoBase64 = photoData ? photoData.replace(/^data:.*;base64,/, '') : null;
       // Если редактируем и нет нового фото — сохраняем старый URL
-      if (editing && !photo && existing && existing.photo) {
+      if (editing && !photoBase64 && existing && existing.photo) {
         purchase.photo = existing.photo;
       }
 
       // Оптимистичное обновление кеша
       var lineData = Object.assign({}, purchase);
+      lineData.photo = photoData || (editing ? (existing && existing.photo) : null); // data URL для мгновенного показа
       lineData.sum = Math.round((Number(purchase.price) || 0) * (Number(purchase.qty) || 0));
       if (!editing) {
         lineData.__row = 'tmp_' + Date.now();
@@ -691,7 +693,7 @@ window.ObjectCard = (function () {
           setTimeout(function () { bgSync(id); }, 300);
         });
       }
-      send(photo || null);
+      send(photoBase64);
     }
   }
 
@@ -791,7 +793,7 @@ window.ObjectCard = (function () {
       root.appendChild(U.el('div', { class: 'card' }, [
         U.el('div', { class: 'card__title', text: 'Действия руководителя' }),
         o.status !== 'закрыт' ? U.el('button', { class: 'btn btn--danger btn--block', text: 'Закрыть объект', style: { marginBottom: '8px' }, onclick: function () { closeObject(id, refresh); } }) : null,
-        U.el('button', { class: 'btn btn--block', text: '🔗 Создать ссылку для клиента', onclick: function () { createCabinet(id); } })
+        U.el('button', { class: 'btn btn--block', text: '🔗 Создать ссылку для клиента', onclick: function (e) { createCabinet(id, e.currentTarget); } })
       ]));
     }
   }
@@ -809,9 +811,11 @@ window.ObjectCard = (function () {
     });
   }
 
-  function createCabinet(id) {
+  function createCabinet(id, btn) {
+    if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
     apiPost('cabinet:create', { token: Store.getToken(), id: id }).then(function (d) {
       if (!d.ok) throw new Error(d.error || 'Ошибка');
+      if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); }
       var url = location.origin + location.pathname + '#/cabinet/' + d.cabinet.token;
       var body = U.el('div', {}, [
         U.el('div', { class: 'modal__title', text: 'Ссылка для клиента' }),

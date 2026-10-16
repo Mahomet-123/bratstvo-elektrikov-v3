@@ -84,9 +84,57 @@ window.Profile = {
       U.el('button', { class: 'btn btn--primary btn--block', type: 'submit', text: 'Сохранить код' })
     ]);
 
+    // Полный прайс-лист (только просмотр) — пункт 4
+    function openPriceList() {
+      var prices = Store.getPrices() || [];
+      var work = prices.filter(function (p) { return !p.type || p.type === 'work'; });
+      var searchI = U.el('input', { class: 'input', placeholder: 'Поиск в прайс-листе…' });
+      var listBox = U.el('div', { class: 'pricelist', style: { maxHeight: '62vh', overflowY: 'auto' } });
+      var secOpen = {};
+      function renderList(q) {
+        U.clear(listBox);
+        var ql = (q || '').toLowerCase();
+        var filtered = work.filter(function (p) { return !ql || (p.name + ' ' + p.section).toLowerCase().indexOf(ql) >= 0; });
+        listBox.appendChild(U.el('div', { class: 'card__sub', style: { marginBottom: '6px' }, text: 'Всего позиций: ' + work.length + (ql ? ' · найдено: ' + filtered.length : '') }));
+        if (!filtered.length) { listBox.appendChild(U.el('div', { class: 'card__sub', text: 'Ничего не найдено' })); return; }
+        var bySec = {};
+        filtered.forEach(function (p) { (bySec[p.section] = bySec[p.section] || []).push(p); });
+        Object.keys(bySec).forEach(function (sec) {
+          var open = secOpen[sec] || ql;
+          var secHead = U.el('div', { class: 'pricelist__sec', style: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, [
+            U.el('span', { text: sec + ' (' + bySec[sec].length + ')' }),
+            U.el('span', { text: open ? '▾' : '▸' })
+          ]);
+          secHead.addEventListener('click', function () { secOpen[sec] = !secOpen[sec]; renderList(q); });
+          listBox.appendChild(secHead);
+          if (!open) return;
+          bySec[sec].forEach(function (p) {
+            listBox.appendChild(U.el('div', { class: 'card pricelist__item', style: { padding: '8px 10px', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'center' } }, [
+              U.el('div', { style: { flex: '1', minWidth: '0' } }, [
+                U.el('div', { style: { fontWeight: '600' }, text: p.name }),
+                U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
+              ]),
+              U.el('div', { class: 'money', text: U.money(p.price) })
+            ]));
+          });
+        });
+      }
+      searchI.addEventListener('input', function () { renderList(searchI.value); });
+      renderList('');
+      var body = U.el('div', {}, [
+        U.el('div', { class: 'modal__title', text: '📋 Прайс-лист' }),
+        searchI, listBox,
+        U.el('div', { class: 'row' }, [
+          U.el('button', { class: 'btn btn--ghost', text: 'Закрыть', onclick: function () { m.close(); } })
+        ])
+      ]);
+      var m = U.modal(body);
+    }
+
     app.appendChild(form);
     if (Store.isAdmin()) {
       app.appendChild(U.el('button', { class: 'btn btn--block', text: 'Панель руководителя', onclick: function () { Router.go('#/admin'); } }));
     }
+    app.appendChild(U.el('button', { class: 'btn btn--block', style: { marginTop: '10px' }, text: '📋 Прайс-лист', onclick: function () { openPriceList(); } }));
   }
 };

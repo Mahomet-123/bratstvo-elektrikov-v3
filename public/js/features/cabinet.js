@@ -67,7 +67,13 @@ function renderPurchases(purchases) {
       U.el('div', { class: 'card__sub' }, [
         U.date(r.date) + (Number(r.qty) ? ' · ' + r.qty + ' шт × ' + U.money(r.price) : '')
       ]),
-      r.photo ? U.el('img', { class: 'thumb thumb--block', src: r.photo, style: { marginTop: '6px' }, loading: 'lazy', alt: 'Фото накладной' }) : null,
+      (function () {
+        var urls = (r.photos && r.photos.length) ? r.photos : (r.photo ? [r.photo] : []);
+        if (!urls.length) return null;
+        return U.el('div', { class: 'photo-grid', style: { marginTop: '6px' } }, urls.map(function (u) {
+          return U.el('div', { class: 'photo-item' }, [U.el('img', { class: 'photo-item__img', src: u, loading: 'lazy', alt: 'Фото накладной' })]);
+        }));
+      })(),
       r.note ? U.el('div', { class: 'card__sub', text: '📝 ' + r.note }) : null
     ]);
   });

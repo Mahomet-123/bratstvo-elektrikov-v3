@@ -24,6 +24,26 @@ window.ObjectCard = (function () {
     return Math.round(price * qty * coef);
   }
 
+  // Итог закупки с учётом наценки на материал (хранится на объекте)
+  function purchaseTotal(pur, o) {
+    var s = sum(pur || [], function (r) { return r.sum; });
+    if (o && o.purchaseMarkup) {
+      var m = s * 0.10;
+      if (m < 1500) m = 1500;
+      s += m;
+    }
+    return Math.round(s);
+  }
+
+  // Горизонтальная лента фото (поддержка нескольких фото чека)
+  function photoStrip(r) {
+    var urls = (r.photos && r.photos.length) ? r.photos : (r.photo ? [r.photo] : []);
+    if (!urls.length) return null;
+    return U.el('div', { class: 'photo-grid', style: { marginTop: '6px' } }, urls.map(function (u) {
+      return U.el('div', { class: 'photo-item' }, [U.el('img', { class: 'photo-item__img', src: u, loading: 'lazy' })]);
+    }));
+  }
+
   function statusPill(s) {
     if (s === 'закрыт') return U.el('span', { class: 'pill pill--closed', text: 'закрыт' });
     if (s === 'день') return U.el('span', { class: 'pill pill--day', text: 'день' });
@@ -527,7 +547,7 @@ window.ObjectCard = (function () {
   /* ---------------- ЗАКУПКА ---------------- */
   function renderPurchase(root, id, data, refresh) {
     var pur = data.purchases || [];
-    var total = sum(pur, function (r) { return r.sum; });
+    var total = purchaseTotal(pur, data.object);
 
     root.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Закупка (' + pur.length + ')' }),
@@ -549,7 +569,7 @@ window.ObjectCard = (function () {
           U.el('div', { class: 'card__sub' }, [
             U.date(r.date) + (Number(r.qty) ? ' · ' + r.qty + ' шт × ' + U.money(r.price) : '')
           ]),
-          r.photo ? U.el('img', { class: 'thumb thumb--block', src: r.photo, style: { marginTop: '6px' }, loading: 'lazy' }) : null,
+          photoStrip(r),
           r.note ? U.el('div', { class: 'card__sub', text: '📝 ' + r.note }) : null,
           U.el('div', { class: 'row', style: { marginTop: '8px', justifyContent: 'flex-end' } }, [
             U.el('button', { class: 'btn btn--sm', text: '✎ Изменить', 'aria-label': 'Изменить', onclick: function () { purchaseModal(id, refresh, r); } }),
@@ -588,76 +608,145 @@ window.ObjectCard = (function () {
 
   function purchaseModal(id, refresh, existing) {
     var editing = !!existing;
-    var dateI = U.el('input', { class: 'input', type: 'date', value: (existing && existing.date) || U.todayISO() });
-    var nameI = U.el('input', { class: 'input', placeholder: 'Наименование материала' });
-    var qtyI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Кол-во', value: (existing ? existing.qty : '1') || '1' });
-    var priceI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Цена за ед.' });
-    var noteI = U.el('textarea', { class: 'textarea', placeholder: 'Примечание' });
-    // capture=environment — прямая съёмка камерой (пункт 1.1)
-    var camI = U.el('input', { class: 'input', type: 'file', accept: 'image/*', capture: 'environment', 'aria-label': 'Сфотографировать чек' });
-    var fileI = U.el('input', { class: 'input', type: 'file', accept: 'image/*', 'aria-label': 'Выбрать фото из галереи' });
-    var preview = U.el('div', { style: { marginTop: '8px' } });
-    var photoData = null; // base64 данные фото
+    var data = OBJ[id] || {};
+    var obj = data.object || {};
 
-    function showPreview(src) {
-      U.clear(preview);
-      if (src) preview.appendChild(U.el('img', { class: 'thumb thumb--block', src: src, style: { marginTop: '0' } }));
+    var dateI = U.el('input', { class: 'input', type: 'date', value: (existing && existing.date) || U.todayISO() });
+    var noteI = U.el('textarea', { class: 'textarea', placeholder: 'Примечание' });
+
+    // Наценка на материал — хранится на уровне объекта
+    var markupI = U.el('input', { type: 'checkbox' });
+    markupI.checked = !!obj.purchaseMarkup;
+
+    // Фото чеков (несколько)
+    var photos = []; // [{ dataUrl, base64 }]
+    var photoGrid = U.el('div', { class: 'photo-grid' });
+    var fileI = U.el('input', { type: 'file', accept: 'image/*', multiple: true, style: { display: 'none' } });
+
+    function addPhoto(dataUrl) {
+      photos.push({ dataUrl: dataUrl, base64: String(dataUrl).replace(/^data:.*;base64,/, '') });
+      renderPhotos();
+    }
+    function renderPhotos() {
+      U.clear(photoGrid);
+      photos.forEach(function (ph, idx) {
+        photoGrid.appendChild(U.el('div', { class: 'photo-item' }, [
+          U.el('img', { class: 'photo-item__img', src: ph.dataUrl, loading: 'lazy' }),
+          U.el('button', { class: 'photo-item__del', 'aria-label': 'Удалить фото', text: '✕', onclick: function () { photos.splice(idx, 1); renderPhotos(); } })
+        ]));
+      });
     }
 
-    // Конвертация в webp через canvas (пункт 3)
+    // Конвертация в webp через canvas
     function convertToWebp(file, cb) {
       var rd = new FileReader();
       rd.onload = function () {
         var img = new Image();
         img.onload = function () {
-          // Проверяем поддержку webp
           var c = document.createElement('canvas');
           if (c.toDataURL('image/webp').indexOf('image/webp') === -1) {
-            // webp не поддерживается — отдаём исходный base64
             cb(String(rd.result).replace(/^data:.*;base64,/, ''), rd.result);
             return;
           }
-          // Конвертируем в webp
-          c.width = img.naturalWidth;
-          c.height = img.naturalHeight;
-          var ctx = c.getContext('2d');
-          ctx.drawImage(img, 0, 0);
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          var ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
           var webpDataUrl = c.toDataURL('image/webp', 0.85);
-          var webpBase64 = webpDataUrl.replace(/^data:.*;base64,/, '');
-          cb(webpBase64, webpDataUrl);
+          cb(webpDataUrl.replace(/^data:.*;base64,/, ''), webpDataUrl);
         };
-        img.onerror = function () {
-          cb(String(rd.result).replace(/^data:.*;base64,/, ''), rd.result);
-        };
+        img.onerror = function () { cb(String(rd.result).replace(/^data:.*;base64,/, ''), rd.result); };
         img.src = String(rd.result);
       };
       rd.onerror = function () { cb(null, null); };
       rd.readAsDataURL(file);
     }
-
-    function handleFile(file, input) {
+    function processFile(file) {
       if (!file) return;
       convertToWebp(file, function (base64, dataUrl) {
         if (!base64) { U.toast('Не удалось обработать фото', 'error'); return; }
-        photoData = dataUrl; // храним data URL (с префиксом) — для превью и оптимистичного кеша
-        showPreview(dataUrl);
+        addPhoto(dataUrl);
       });
     }
+    fileI.addEventListener('change', function () {
+      Array.prototype.forEach.call(fileI.files || [], processFile);
+      fileI.value = '';
+    });
 
-    camI.addEventListener('change', function () { handleFile(camI.files && camI.files[0], camI); });
-    fileI.addEventListener('change', function () { handleFile(fileI.files && fileI.files[0], fileI); });
+    // Камера: getUserMedia с фолбэком на input[capture]
+    function openCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { fallbackCamera(); return; }
+      var streamRef = { s: null };
+      var video = U.el('video', { class: 'camera-overlay__video', autoplay: true, playsinline: true });
+      video.muted = true;
+      var overlay = U.el('div', { class: 'camera-overlay' }, [
+        U.el('div', { class: 'camera-overlay__bar' }, [
+          U.el('button', { class: 'iconbtn', 'aria-label': 'Закрыть', text: '✕', onclick: closeCam }),
+          U.el('div', { class: 'camera-overlay__title', text: 'Сфотографируйте чек' }),
+          U.el('span', { style: { width: '38px' } })
+        ]),
+        video,
+        U.el('div', { class: 'camera-overlay__actions' }, [
+          U.el('button', { class: 'btn btn--ghost', text: 'Готово', onclick: closeCam }),
+          U.el('button', { class: 'btn btn--primary', text: '📷 Снять', onclick: capture })
+        ])
+      ]);
+      function closeCam() {
+        try { if (streamRef.s) streamRef.s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+        if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      }
+      function capture() {
+        try {
+          var c = document.createElement('canvas');
+          c.width = video.videoWidth || 1280; c.height = video.videoHeight || 720;
+          var ctx = c.getContext('2d'); ctx.drawImage(video, 0, 0, c.width, c.height);
+          addPhoto(c.toDataURL('image/webp', 0.85));
+        } catch (e) { U.toast('Не удалось снять фото', 'error'); }
+      }
+      document.body.appendChild(overlay);
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (stream) {
+        streamRef.s = stream; video.srcObject = stream;
+      }).catch(function () { closeCam(); fallbackCamera(); });
+    }
+    function fallbackCamera() {
+      var f = U.el('input', { type: 'file', accept: 'image/*', capture: 'environment', style: { display: 'none' } });
+      document.body.appendChild(f);
+      f.addEventListener('change', function () { if (f.files && f.files[0]) processFile(f.files[0]); if (f.parentNode) f.parentNode.removeChild(f); });
+      f.click();
+    }
+
+    // Строки материалов (несколько)
+    var matBox = U.el('div', {});
+    var rows = [];
+    function addRow(preset) {
+      preset = preset || {};
+      var nameI = U.el('input', { class: 'input', placeholder: 'Наименование', value: preset.name || '' });
+      var qtyI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Кол-во', value: preset.qty != null ? preset.qty : '1' });
+      var priceI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Цена', value: preset.price != null ? preset.price : '' });
+      var rowEl = U.el('div', { class: 'matrow' }, [
+        nameI, qtyI, priceI,
+        U.el('button', { class: 'iconbtn iconbtn--danger', 'aria-label': 'Удалить строку', text: '✕', onclick: function () {
+          if (matBox.contains(rowEl)) matBox.removeChild(rowEl);
+          rows = rows.filter(function (r) { return r.rowEl !== rowEl; });
+        } })
+      ]);
+      rows.push({ nameI: nameI, qtyI: qtyI, priceI: priceI, rowEl: rowEl });
+      matBox.appendChild(rowEl);
+    }
+    addRow(); addRow(); addRow(); // по умолчанию 3 строки
 
     var body = U.el('div', {}, [
       U.el('div', { class: 'modal__title', text: editing ? 'Редактировать закупку' : 'Новая закупка' }),
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Дата' }), dateI]),
-      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Наименование материала *' }), nameI]),
-      U.el('div', { style: { display: 'flex', gap: '10px' } }, [
-        U.el('div', { class: 'field', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Кол-во' }), qtyI]),
-        U.el('div', { class: 'field', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Цена' }), priceI])
+      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Материалы (наименование / кол-во / цена)' }), matBox]),
+      U.el('button', { class: 'btn btn--ghost btn--sm', text: '＋ Добавить строку', 'aria-label': 'Добавить строку', onclick: function () { addRow(); } }),
+      U.el('label', { class: 'checkbox', style: { margin: '10px 0' } }, [markupI, U.el('span', { text: 'Наценка на материал (+10%, мин. 1500 ₽)' })]),
+      U.el('div', { class: 'field' }, [
+        U.el('label', { class: 'field__label', text: 'Фото чеков' }),
+        U.el('div', { style: { display: 'flex', gap: '8px' } }, [
+          U.el('button', { class: 'btn btn--block', text: '📷 Камера', 'aria-label': 'Камера', onclick: openCamera }),
+          U.el('button', { class: 'btn btn--block', text: '🖼 Галерея', 'aria-label': 'Галерея', onclick: function () { fileI.click(); } })
+        ]),
+        photoGrid, fileI
       ]),
-      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: '📷 Сфотографировать чек' }), camI]),
-      U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: '🖼 Выбрать из галереи' }), fileI]),
-      preview,
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Примечание' }), noteI]),
       U.el('div', { class: 'row' }, [
         U.el('button', { class: 'btn btn--ghost', text: 'Отмена', onclick: function () { m.close(); } }),
@@ -667,67 +756,82 @@ window.ObjectCard = (function () {
     var m = U.modal(body);
 
     if (editing) {
-      nameI.value = existing.name || '';
-      priceI.value = existing.price || '';
+      U.clear(matBox); rows = [];
+      addRow({ name: existing.name || '', qty: existing.qty, price: existing.price });
       noteI.value = existing.note || '';
-      if (existing.photo) showPreview(existing.photo);
+      if (existing.photos && existing.photos.length) existing.photos.forEach(function (u) { addPhoto(u); });
+      else if (existing.photo) addPhoto(existing.photo);
     }
 
+    // наценка на материал сохраняется на уровень объекта и влияет на итоги
+    markupI.addEventListener('change', function () {
+      var on = markupI.checked;
+      if (OBJ[id] && OBJ[id].object) OBJ[id].object.purchaseMarkup = on ? 1 : 0;
+      persist(id);
+      apiPost('objects:update', { token: Store.getToken(), id: id, patch: { purchaseMarkup: on } })
+        .catch(function () { /* фоновая синхронизация исправит */ });
+    });
+
     function save() {
-      var name = nameI.value.trim();
-      if (!name) { U.toast('Введите наименование', 'error'); return; }
+      var valid = rows.filter(function (r) { return r.nameI.value.trim(); });
+      if (!valid.length) { U.toast('Добавьте хотя бы одно наименование', 'error'); return; }
       var btn = body.querySelector('.btn--primary');
       btn.disabled = true; btn.classList.add('is-loading');
-      var purchase = {
-        date: dateI.value || U.todayISO(), name: name,
-        qty: Number(qtyI.value) || 0, price: Number(priceI.value) || 0, note: noteI.value.trim()
-      };
-      // photoData — это data URL; для отправки на сервер отрезаем префикс
-      var photoBase64 = photoData ? photoData.replace(/^data:.*;base64,/, '') : null;
-      // Если редактируем и нет нового фото — сохраняем старый URL
-      if (editing && !photoBase64 && existing && existing.photo) {
-        purchase.photo = existing.photo;
-      }
+      var date = dateI.value || U.todayISO();
+      var note = noteI.value.trim();
+      var photoBase64 = photos.map(function (p) { return p.base64; });
 
-      // Оптимистичное обновление кеша
-      var lineData = Object.assign({}, purchase);
-      lineData.photo = photoData || (editing ? (existing && existing.photo) : null); // data URL для мгновенного показа
-      lineData.sum = Math.round((Number(purchase.price) || 0) * (Number(purchase.qty) || 0));
-      if (!editing) {
-        lineData.__row = 'tmp_' + Date.now();
-        if (OBJ[id]) {
-          OBJ[id].purchases = OBJ[id].purchases || [];
-          OBJ[id].purchases.push(lineData);
-          persist(id);
-        }
-      } else {
+      if (editing) {
+        // редактирование — обновляем существующую запись первой строкой
+        var r0 = valid[0];
+        var ep = Number(r0.priceI.value) || 0, eq = Number(r0.qtyI.value) || 0;
+        var upd = { date: date, name: r0.nameI.value.trim(), qty: eq, price: ep, note: note, photos: photoBase64 };
         if (OBJ[id] && OBJ[id].purchases) {
-          OBJ[id].purchases = OBJ[id].purchases.map(function (r) {
-            return r.__row === existing.__row ? Object.assign({}, r, lineData) : r;
+          OBJ[id].purchases = OBJ[id].purchases.map(function (x) {
+            return x.__row === existing.__row ? Object.assign({}, x, {
+              name: upd.name, qty: upd.qty, price: upd.price, note: upd.note, date: upd.date,
+              photos: photos.map(function (p) { return p.dataUrl; }),
+              photo: photos.length ? photos[0].dataUrl : null,
+              sum: Math.round(ep * eq)
+            }) : x;
           });
           persist(id);
         }
+        m.close(); U.toast('Обновлено', 'success'); refresh();
+        apiPost('purchases:update', { token: Store.getToken(), objectId: id, rowNum: existing.__row, purchase: upd })
+          .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); setTimeout(function () { bgSync(id); }, 300); })
+          .catch(function (e) { U.toast(e.message, 'error'); setTimeout(function () { bgSync(id); }, 300); });
+        return;
       }
 
+      // добавляем все непустые строки как отдельные закупки
+      var tmpLines = valid.map(function (r) {
+        var price = Number(r.priceI.value) || 0, qty = Number(r.qtyI.value) || 0;
+        return {
+          name: r.nameI.value.trim(), qty: qty, price: price, note: note, date: date,
+          sum: Math.round(price * qty),
+          photos: photos.map(function (p) { return p.dataUrl; }),
+          photo: photos.length ? photos[0].dataUrl : null
+        };
+      });
+      if (OBJ[id]) {
+        OBJ[id].purchases = OBJ[id].purchases || [];
+        tmpLines.forEach(function (ld) { ld.__row = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); OBJ[id].purchases.push(ld); });
+        persist(id);
+      }
       m.close();
-      U.toast(editing ? 'Обновлено' : 'Закупка добавлена', 'success');
+      U.toast('Закупка добавлена: ' + tmpLines.length, 'success');
       refresh();
 
-      // Отправка на сервер
-      function send(photoBase64) {
-        if (photoBase64) purchase.photo = photoBase64;
-        var p = editing
-          ? apiPost('purchases:update', { token: Store.getToken(), objectId: id, rowNum: existing.__row, purchase: purchase })
-          : apiPost('purchases:add', { token: Store.getToken(), objectId: id, purchase: purchase });
-        p.then(function (d) {
-          if (!d.ok) throw new Error(d.error || 'Ошибка');
-          setTimeout(function () { bgSync(id); }, 300);
-        }).catch(function (e) {
-          U.toast(e.message, 'error');
-          setTimeout(function () { bgSync(id); }, 300);
+      var chain = Promise.resolve();
+      tmpLines.forEach(function (ld) {
+        var purchase = { date: ld.date, name: ld.name, qty: ld.qty, price: ld.price, note: ld.note, photos: photoBase64 };
+        chain = chain.then(function () {
+          return apiPost('purchases:add', { token: Store.getToken(), objectId: id, purchase: purchase });
         });
-      }
-      send(photoBase64);
+      });
+      chain.then(function () { setTimeout(function () { bgSync(id); }, 300); })
+           .catch(function (e) { U.toast(e.message || 'Ошибка отправки', 'error'); setTimeout(function () { bgSync(id); }, 300); });
     }
   }
 
@@ -798,7 +902,7 @@ window.ObjectCard = (function () {
     var o = data.object || {};
     var calcTotal = sum(data.calc || [], function (r) { return r.sum; });
     if (o.commissioning == 1) calcTotal = Math.round(calcTotal * 1.30);
-    var purTotal = sum(data.purchases || [], function (r) { return r.sum; });
+    var purTotal = purchaseTotal(data.purchases || [], data.object);
     var profit = calcTotal - purTotal;
 
     root.appendChild(U.el('div', { class: 'totals' }, [
@@ -821,6 +925,7 @@ window.ObjectCard = (function () {
     ]));
 
     if (o.commissioning == 1) root.appendChild(U.el('div', { class: 'card__sub', text: '⚡ Учтён коэффициент пусконаладки +30%.' }));
+    if (o.purchaseMarkup) root.appendChild(U.el('div', { class: 'card__sub', text: '💰 Учтена наценка на материал +10% (мин. 1500 ₽).' }));
     if (o.closedAt) root.appendChild(U.el('div', { class: 'card__sub', text: 'Закрыт: ' + U.datetime(o.closedAt) }));
 
     if (Store.isAdmin()) {

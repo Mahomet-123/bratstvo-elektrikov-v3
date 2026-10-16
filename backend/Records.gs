@@ -79,26 +79,30 @@ function Records_recalc(objectId) {
 
 // Закупка: при наличии фото — сначала загрузка в Drive
 function Purchases_add(objectId, p) {
-  var photoUrl = '';
-  if (p.photo) {
-    var res = Photos_upload('purchase_' + uid() + '.jpg', p.photo);
-    photoUrl = res.url;
-  }
+  var photoUrls = [];
+  if (p.photos && p.photos.length) photoUrls = p.photos.filter(Boolean);
+  else if (p.photo) photoUrls = [p.photo];
   var price = Number(p.price) || 0;
   var qty = Number(p.qty) || 0;
   var sum = Math.round(price * qty);
+  var photo0 = photoUrls[0] || '';
   appendRow(CONFIG.SHEET_PURCHASE, [
     objectId, p.date || (new Date().toISOString().slice(0, 10)),
-    p.n || '', p.name || '', qty, price, sum, photoUrl, p.note || '', nowISO()
+    p.n || '', p.name || '', qty, price, sum, photo0, p.note || '', nowISO(), JSON.stringify(photoUrls)
   ]);
   syncObjectSheet(objectId);
-  return { ok: true, sum: sum, photo: photoUrl };
+  return { ok: true, sum: sum, photo: photo0, photos: photoUrls };
 }
 
 function Purchases_list(objectId) {
   return readRows(CONFIG.SHEET_PURCHASE, 1)
     .filter(function (r) { return String(r.objectId) === String(objectId); })
-    .map(function (r) { var o = stripRow_(r); o.__row = r.__row; return o; });
+    .map(function (r) {
+      var o = stripRow_(r);
+      o.photos = parsePhotos_(r.photos || r.photo);
+      o.__row = r.__row;
+      return o;
+    });
 }
 
 // Удаление позиции закупки по номеру строки листа
@@ -110,18 +114,17 @@ function Purchases_remove(objectId, rowNum) {
 
 // Обновление позиции закупки по номеру строки листа
 function Purchases_update(objectId, rowNum, p) {
-  var photoUrl = '';
-  if (p.photo) {
-    var res = Photos_upload('purchase_' + uid() + '.jpg', p.photo);
-    photoUrl = res.url;
-  }
+  var photoUrls = [];
+  if (p.photos && p.photos.length) photoUrls = p.photos.filter(Boolean);
+  else if (p.photo) photoUrls = [p.photo];
   var price = Number(p.price) || 0;
   var qty = Number(p.qty) || 0;
   var sum = Math.round(price * qty);
+  var photo0 = photoUrls[0] || '';
   updateRow(CONFIG.SHEET_PURCHASE, rowNum, [
     objectId, p.date || (new Date().toISOString().slice(0, 10)),
-    p.n || '', p.name || '', qty, price, sum, photoUrl, p.note || '', nowISO()
+    p.n || '', p.name || '', qty, price, sum, photo0, p.note || '', nowISO(), JSON.stringify(photoUrls)
   ]);
   syncObjectSheet(objectId);
-  return { ok: true, sum: sum, photo: photoUrl };
+  return { ok: true, sum: sum, photo: photo0, photos: photoUrls };
 }

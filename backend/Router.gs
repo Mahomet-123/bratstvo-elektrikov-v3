@@ -46,6 +46,7 @@ function Router_handle(e) {
   var p = Router_params(e);
   var action = p.action || '';
   try {
+    migrateSchema();
     switch (action) {
 
       // ---------- Публичные ----------

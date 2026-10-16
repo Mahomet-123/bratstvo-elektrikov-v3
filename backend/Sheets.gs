@@ -24,12 +24,12 @@ function ensureBaseSheets() {
   var specs = [
     [CONFIG.SHEET_PRICE,    ['n', 'section', 'name', 'unit', 'price', 'from', 'type']],
     [CONFIG.SHEET_USERS,    ['login', 'code', 'role', 'name', 'phone', 'active', 'token']],
-    [CONFIG.SHEET_OBJECTS,  ['id', 'code', 'name', 'address', 'client', 'master', 'status', 'createdAt', 'closedAt', 'archiveYear', 'sheet', 'commissioning']],
+    [CONFIG.SHEET_OBJECTS,  ['id', 'code', 'name', 'address', 'client', 'master', 'status', 'createdAt', 'closedAt', 'archiveYear', 'sheet', 'commissioning', 'purchaseMarkup']],
     [CONFIG.SHEET_VISITS,   ['objectId', 'date', 'master', 'dayNumber', 'note', 'createdAt', 'deviceId']],
     [CONFIG.SHEET_STATUS,   ['objectId', 'ts', 'status', 'by']],
     [CONFIG.SHEET_LOG,      ['ts', 'actor', 'msg']],
     [CONFIG.SHEET_CALC,     ['objectId', 'n', 'section', 'name', 'unit', 'qty', 'price', 'coef', 'material', 'from', 'sum', 'note', 'createdAt']],
-    [CONFIG.SHEET_PURCHASE, ['objectId', 'date', 'n', 'name', 'qty', 'price', 'sum', 'photo', 'note', 'createdAt']],
+    [CONFIG.SHEET_PURCHASE, ['objectId', 'date', 'n', 'name', 'qty', 'price', 'sum', 'photo', 'note', 'createdAt', 'photos']],
     ['Кабинеты',            ['token', 'objectId', 'createdAt', 'expiresAt', 'active']]
   ];
   var ss = SS();
@@ -50,6 +50,41 @@ function setHeaders_(name, headers) {
     sh.appendRow(headers);
     sh.getRange(1, 1, 1, headers.length).setFontWeight('bold');
   }
+}
+
+// Добавляет недостающие колонки в УЖЕ существующие листы (миграция схемы).
+// setHeaders_ срабатывает только для пустых листов, поэтому для живых
+// таблиц нужна отдельная дозапись заголовков в конец.
+function migrateSchema() {
+  ensureColumn_(CONFIG.SHEET_PURCHASE, 10, 'photos');
+  ensureColumn_(CONFIG.SHEET_OBJECTS, 12, 'purchaseMarkup');
+}
+
+function ensureColumn_(name, colIndex, headerName) {
+  try {
+    var sh = getSheet_(name, false);
+    if (!sh) return;
+    var lastCol = sh.getLastColumn();
+    var header;
+    try {
+      header = sh.getRange(1, 1, 1, Math.max(lastCol, colIndex + 1)).getValues()[0];
+    } catch (e) { return; }
+    if (header[colIndex] === headerName) return; // уже есть
+    sh.getRange(1, colIndex + 1).setValue(headerName);
+  } catch (e) { /* не критично */ }
+}
+
+// Нормализует поле photos из разных источников в массив URL.
+function parsePhotos_(raw) {
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (typeof raw === 'string' && raw) {
+    var s = raw.trim();
+    if (s.charAt(0) === '[') {
+      try { var a = JSON.parse(s); if (Array.isArray(a)) return a.filter(Boolean); } catch (e) {}
+    }
+    return [s]; // одиночный URL
+  }
+  return [];
 }
 
 // Чтение всех строк листа в массив объектов (по заголовкам)

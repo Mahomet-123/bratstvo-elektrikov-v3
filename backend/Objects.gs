@@ -20,7 +20,8 @@ function Objects_create(data, byUser) {
   ensureObjectSheet(sheetName, code, data.name);
   var row = [
     id, code, data.name || 'Без названия', data.address || '', data.client || '',
-    data.master || '', 'расчёт', nowISO(), '', '', sheetName, data.commissioning ? 1 : 0
+    data.master || '', 'расчёт', nowISO(), '', '', sheetName, data.commissioning ? 1 : 0,
+    data.purchaseMarkup ? 1 : 0
   ];
   appendRow(CONFIG.SHEET_OBJECTS, row);
   Objects_setStatus(id, 'расчёт', byUser ? byUser.login : 'system');
@@ -51,7 +52,8 @@ function Objects_update(id, patch) {
     patch.client !== undefined ? patch.client : r.client,
     patch.master !== undefined ? patch.master : r.master,
     r.status, r.createdAt, r.closedAt, r.archiveYear, r.sheet,
-    patch.commissioning !== undefined ? (patch.commissioning ? 1 : 0) : r.commissioning
+    patch.commissioning !== undefined ? (patch.commissioning ? 1 : 0) : r.commissioning,
+    patch.purchaseMarkup !== undefined ? (patch.purchaseMarkup ? 1 : 0) : (r.purchaseMarkup ? 1 : 0)
   ];
   updateRow(CONFIG.SHEET_OBJECTS, r.__row, row);
   syncObjectSheet(id);
@@ -101,7 +103,8 @@ function Objects_setStatus(id, status, by) {
   if (!r) throw new Error('Объект не найден');
   updateRow(CONFIG.SHEET_OBJECTS, r.__row,
     [r.id, r.code, r.name, r.address, r.client, r.master, status,
-     r.createdAt, status === 'закрыт' ? nowISO() : r.closedAt, r.archiveYear, r.sheet, r.commissioning]);
+     r.createdAt, status === 'закрыт' ? nowISO() : r.closedAt, r.archiveYear, r.sheet, r.commissioning,
+     r.purchaseMarkup ? 1 : 0]);
   appendRow(CONFIG.SHEET_STATUS, [id, nowISO(), status, by || 'system']);
 }
 

@@ -79,9 +79,7 @@ function Records_recalc(objectId) {
 
 // Закупка: при наличии фото — сначала загрузка в Drive
 function Purchases_add(objectId, p) {
-  var photoUrls = [];
-  if (p.photos && p.photos.length) photoUrls = p.photos.filter(Boolean);
-  else if (p.photo) photoUrls = [p.photo];
+  var photoUrls = uploadPhotos_(p.name || 'photo', (p.photos && p.photos.length) ? p.photos : (p.photo ? [p.photo] : []));
   var price = Number(p.price) || 0;
   var qty = Number(p.qty) || 0;
   var sum = Math.round(price * qty);
@@ -114,9 +112,7 @@ function Purchases_remove(objectId, rowNum) {
 
 // Обновление позиции закупки по номеру строки листа
 function Purchases_update(objectId, rowNum, p) {
-  var photoUrls = [];
-  if (p.photos && p.photos.length) photoUrls = p.photos.filter(Boolean);
-  else if (p.photo) photoUrls = [p.photo];
+  var photoUrls = uploadPhotos_(p.name || 'photo', (p.photos && p.photos.length) ? p.photos : (p.photo ? [p.photo] : []));
   var price = Number(p.price) || 0;
   var qty = Number(p.qty) || 0;
   var sum = Math.round(price * qty);
@@ -127,4 +123,19 @@ function Purchases_update(objectId, rowNum, p) {
   ]);
   syncObjectSheet(objectId);
   return { ok: true, sum: sum, photo: photo0, photos: photoUrls };
+}
+
+// Загружает переданные base64-фото в Drive и возвращает массив URL.
+// Если строка уже является http(s)-ссылкой — оставляем как есть.
+function uploadPhotos_(prefix, src) {
+  var out = [];
+  (src || []).forEach(function (b64) {
+    if (!b64) return;
+    if (/^https?:\/\//.test(b64)) { out.push(b64); return; }
+    try {
+      var up = Photos_upload(prefix + '_' + uid() + '.jpg', b64);
+      if (up && up.url) out.push(up.url);
+    } catch (e) { /* при сбое загрузки пропускаем фото */ }
+  });
+  return out;
 }

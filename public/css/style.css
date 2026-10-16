@@ -93,6 +93,8 @@ a { color: var(--primary); }
   width: 38px; height: 38px; border-radius: 10px; font-size: 20px; cursor: pointer;
 }
 .iconbtn:active { background: var(--surface-2); }
+.iconbtn--danger { color: var(--danger); }
+.iconbtn--danger:active { background: rgba(211,51,51,.14); }
 
 /* --- Контейнер --- */
 .app { padding: 14px 12px 24px; max-width: 720px; margin: 0 auto; }
@@ -275,6 +277,8 @@ a { color: var(--primary); }
 .pricelist { margin-top: 6px; }
 .pricelist__sec { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin: 8px 0 4px; }
 .pricelist__item { transition: background .1s ease; }
+.pricelist__item.is-selected { border-color: var(--primary); background: var(--surface-2); }
+.pricelist__sec { cursor: pointer; user-select: none; padding: 4px 2px; }
 
 /* --- Мини-превью фото чека (блочное) --- */
 .thumb--block { width: 100%; max-width: 220px; height: auto; aspect-ratio: 4 / 3; object-fit: cover; }

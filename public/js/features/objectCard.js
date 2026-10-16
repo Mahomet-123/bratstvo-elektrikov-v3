@@ -21,13 +21,7 @@ window.ObjectCard = (function () {
     var qty = Number(line.qty) || 0;
     var price = Number(line.price) || 0;
     var coef = Number(line.coef) || 1;
-    var s = price * qty * coef;
-    if (line.material) {
-      var markup = s * 0.10;
-      if (markup < 1500) markup = 1500;
-      s += markup;
-    }
-    return Math.round(s);
+    return Math.round(price * qty * coef);
   }
 
   function statusPill(s) {
@@ -245,12 +239,12 @@ window.ObjectCard = (function () {
           U.el('div', { class: 'card__sub' }, [
             (Number(r.qty) || 0) + ' ' + (r.unit || '') + ' × ' + U.money(r.price) +
             (Number(r.coef) && Number(r.coef) != 1 ? ' × ' + r.coef : '') +
-            (r.material == 1 ? ' · материал' : '') + (r.from == 1 ? ' · с' : '')
+            (r.from == 1 ? ' · с' : '')
           ]),
           r.note ? U.el('div', { class: 'card__sub', text: '📝 ' + r.note }) : null,
-          U.el('div', { class: 'row', style: { marginTop: '8px', justifyContent: 'flex-end' } }, [
-            U.el('button', { class: 'btn btn--sm', text: '✎ Изменить', 'aria-label': 'Изменить', onclick: function () { calcModal(id, r, refresh); } }),
-            U.el('button', { class: 'btn btn--sm btn--danger', text: '✕ Удалить', 'aria-label': 'Удалить', onclick: function () { removeCalc(id, r, refresh); } })
+          U.el('div', { class: 'row', style: { marginTop: '8px', justifyContent: 'flex-end', gap: '8px' } }, [
+            U.el('button', { class: 'iconbtn', 'aria-label': 'Изменить', title: 'Изменить', text: '✏️', onclick: function () { calcModal(id, r, refresh); } }),
+            U.el('button', { class: 'iconbtn iconbtn--danger', 'aria-label': 'Удалить', title: 'Удалить', text: '✕', onclick: function () { removeCalc(id, r, refresh); } })
           ])
         ]));
       });
@@ -308,30 +302,61 @@ window.ObjectCard = (function () {
     var qtyI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Кол-во', value: '1' });
     var priceI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Цена' });
     var coefI = U.el('input', { class: 'input', type: 'number', step: 'any', value: '1', placeholder: 'Коэфф.' });
-    var matI = U.el('input', { type: 'checkbox' }); // по умолчанию НЕ отмечен (пункт 1.1)
     var noteI = U.el('textarea', { class: 'textarea', placeholder: 'Примечание' });
 
-    function applyPrice(p) {
-      nameI.value = p.name; sectI.value = p.section; unitI.value = p.unit; priceI.value = p.price;
+    // --- Множественный выбор (пункт 1/2): тап по строке = выбор; общие инпуты
+    // редактируют активную выбранную позицию, данные сохраняются за каждой. ---
+    var selected = []; // [{ p, qty, coef, price, note }]
+    var active = null; // активная выбранная позиция (чьи данные сейчас в инпутах)
+    var cbMap = {};    // p -> чекбокс (обновляем без перерисовки всего списка)
+
+    function findSel(p) { return selected.filter(function (s) { return s.p === p; })[0]; }
+    function isSelected(p) { return !!findSel(p); }
+
+    function setActive(s) {
+      active = s;
+      if (!s) return;
+      nameI.value = s.p.name; sectI.value = s.p.section; unitI.value = s.p.unit || '';
+      qtyI.value = s.qty; priceI.value = s.price; coefI.value = s.coef; noteI.value = s.note || '';
+    }
+    function syncInputsToActive() {
+      if (!active) return;
+      active.qty = Number(qtyI.value) || 1;
+      active.coef = Number(coefI.value) || 1;
+      active.price = Number(priceI.value) || 0;
+      active.note = noteI.value.trim();
     }
 
-    // --- Множественный выбор (пункт 1) ---
-    var selected = []; // массив выбранных элементов прайс-листа
-    function isSelected(p) { return selected.some(function (x) { return x.name === p.name && x.section === p.section && x.price === p.price; }); }
-    function toggleSel(p, cb) {
-      if (isSelected(p)) selected = selected.filter(function (x) { return x !== p; });
-      else selected.push(p);
+    function toggleSel(p) {
+      var ex = findSel(p);
+      if (ex) {
+        selected = selected.filter(function (s) { return s !== ex; });
+        if (active === ex) { active = selected[selected.length - 1] || null; setActive(active); }
+      } else {
+        var s = { p: p, qty: 1, coef: 1, price: Number(p.price) || 0, note: '' };
+        selected.push(s);
+        setActive(s);
+      }
+      if (cbMap[p]) cbMap[p].checked = isSelected(p);
       updateSelBtn();
-      if (cb) cb.checked = isSelected(p);
     }
+
     var addSelBtn = U.el('button', { class: 'btn btn--primary', text: 'Добавить выбранные (0)', disabled: 'disabled', onclick: addSelected });
 
     function updateSelBtn() {
-      addSelBtn.textContent = 'Добавить выбранные (' + selected.length + ')';
-      if (selected.length > 0) addSelBtn.removeAttribute('disabled');
+      var manual = !!nameI.value.trim();
+      addSelBtn.textContent = selected.length ? 'Добавить выбранные (' + selected.length + ')' : 'Добавить';
+      if (selected.length > 0 || manual) addSelBtn.removeAttribute('disabled');
       else addSelBtn.setAttribute('disabled', 'disabled');
     }
+    nameI.addEventListener('input', updateSelBtn);
 
+    // правки в инпутах сразу сохраняются в активную выбранную позицию
+    [qtyI, coefI, priceI, noteI].forEach(function (inp) {
+      inp.addEventListener('input', syncInputsToActive);
+    });
+
+    var secOpen = {}; // разделы свёрнуты по умолчанию
     function renderList(q) {
       U.clear(listBox);
       var ql = (q || '').toLowerCase();
@@ -339,24 +364,31 @@ window.ObjectCard = (function () {
         if (p.type && p.type !== 'work') return false;
         return !ql || (p.name + ' ' + p.section).toLowerCase().indexOf(ql) >= 0;
       });
-      var hits = work.slice(0, 50);
-      var countEl = U.el('div', { class: 'card__sub', style: { marginBottom: '6px' }, text: 'Найдено работ: ' + hits.length + ' из ' + work.length + (ql ? '' : ' (показаны первые 50)') });
-      listBox.appendChild(countEl);
-      if (!hits.length) { listBox.appendChild(U.el('div', { class: 'card__sub', text: 'Ничего не найдено' })); return; }
+      listBox.appendChild(U.el('div', { class: 'card__sub', style: { marginBottom: '6px' }, text: 'Найдено работ: ' + work.length }));
+      if (!work.length) { listBox.appendChild(U.el('div', { class: 'card__sub', text: 'Ничего не найдено' })); return; }
       var bySec = {};
-      hits.forEach(function (p) { (bySec[p.section] = bySec[p.section] || []).push(p); });
+      work.forEach(function (p) { (bySec[p.section] = bySec[p.section] || []).push(p); });
       Object.keys(bySec).forEach(function (sec) {
-        listBox.appendChild(U.el('div', { class: 'pricelist__sec', text: sec }));
+        var open = secOpen[sec] || ql; // при поиске — раскрываем все разделы
+        var secHead = U.el('div', { class: 'pricelist__sec', style: { cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, [
+          U.el('span', { text: sec + ' (' + bySec[sec].length + ')' }),
+          U.el('span', { text: open ? '▾' : '▸' })
+        ]);
+        secHead.addEventListener('click', function () { secOpen[sec] = !secOpen[sec]; renderList(q); });
+        listBox.appendChild(secHead);
+        if (!open) return;
         bySec[sec].forEach(function (p) {
           var cb = U.el('input', { type: 'checkbox', 'aria-label': 'Выбрать ' + p.name });
           cb.checked = isSelected(p);
-          cb.addEventListener('change', function () { toggleSel(p, cb); });
-          listBox.appendChild(U.el('div', { class: 'card pricelist__item', style: { padding: '8px 10px', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'flex-start' } }, [
+          cbMap[p] = cb;
+          cb.addEventListener('click', function (e) { e.stopPropagation(); toggleSel(p); });
+          var info = U.el('div', { style: { flex: '1', minWidth: '0', cursor: 'pointer' }, onclick: function () { toggleSel(p); } }, [
+            U.el('div', { style: { fontWeight: '600' }, text: p.name }),
+            U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
+          ]);
+          listBox.appendChild(U.el('div', { class: 'card pricelist__item' + (isSelected(p) ? ' is-selected' : ''), style: { padding: '8px 10px', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'flex-start' } }, [
             U.el('div', { style: { paddingTop: '2px' } }, [cb]),
-            U.el('div', { style: { flex: '1', minWidth: '0', cursor: 'pointer' }, onclick: function () { applyPrice(p); } }, [
-              U.el('div', { style: { fontWeight: '600' }, text: p.name }),
-              U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
-            ])
+            info
           ]));
         });
       });
@@ -367,7 +399,7 @@ window.ObjectCard = (function () {
     if (editing) {
       nameI.value = line.name || ''; sectI.value = line.section || ''; unitI.value = line.unit || '';
       qtyI.value = line.qty; priceI.value = line.price; coefI.value = line.coef || 1;
-      matI.checked = line.material == 1; noteI.value = line.note || '';
+      noteI.value = line.note || '';
     }
 
     var body = U.el('div', {}, [
@@ -382,7 +414,6 @@ window.ObjectCard = (function () {
         U.el('div', { class: 'field', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Цена' }), priceI])
       ]),
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Коэффициент' }), coefI]),
-      U.el('label', { class: 'checkbox', style: { marginBottom: '12px' } }, [matI, U.el('span', { text: 'Наценка на материал (+10%, мин. 1500 ₽)' })]),
       U.el('div', { class: 'field' }, [U.el('label', { class: 'field__label', text: 'Примечание' }), noteI]),
       U.el('div', { class: 'row' }, [
         U.el('button', { class: 'btn btn--ghost', text: 'Отмена', onclick: function () { m.close(); } }),
@@ -393,43 +424,46 @@ window.ObjectCard = (function () {
 
     // --- Пакетное добавление выбранных (пункт 1) ---
     function addSelected() {
-      if (!selected.length) { U.toast('Отметьте работы в списке', 'error'); return; }
-      var qty = Number(qtyI.value) || 1;
-      var coef = Number(coefI.value) || 1;
-      var material = matI.checked ? 1 : 0;
-      var note = noteI.value.trim();
+      var lines = [];
+      if (selected.length) {
+        // Каждая выбранная позиция несёт свои сохранённые данные
+        selected.forEach(function (s) {
+          lines.push({
+            n: '', section: s.p.section || '', name: s.p.name, unit: s.p.unit || '',
+            qty: s.qty, price: s.price, coef: s.coef, note: s.note || ''
+          });
+        });
+      } else {
+        // Ручной ввод одной позиции
+        var nm = nameI.value.trim();
+        if (!nm) { U.toast('Отметьте работы в списке или введите наименование', 'error'); return; }
+        lines.push({
+          n: '', section: sectI.value.trim(), name: nm, unit: unitI.value.trim(),
+          qty: Number(qtyI.value) || 1, price: Number(priceI.value) || 0,
+          coef: Number(coefI.value) || 1, note: noteI.value.trim()
+        });
+      }
+      lines.forEach(function (ld) { ld.sum = calcLineSum(ld); });
 
-      // Оптимистично добавляем все выбранные в кеш
-      var tmpLines = selected.map(function (p, i) {
-        var ld = {
-          n: '', section: p.section || '', name: p.name, unit: p.unit || '',
-          qty: qty, price: Number(p.price) || 0, coef: coef, material: material, note: note
-        };
-        ld.sum = calcLineSum(ld);
-        ld.__row = 'tmp_' + Date.now() + '_' + i;
-        return ld;
-      });
+      // Оптимистично добавляем все в кеш
       if (OBJ[id]) {
         OBJ[id].calc = OBJ[id].calc || [];
-        tmpLines.forEach(function (ld) { OBJ[id].calc.push(ld); });
+        lines.forEach(function (ld) { ld.__row = 'tmp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7); OBJ[id].calc.push(ld); });
         persist(id);
       }
 
       // Закрываем модалку и перерисовываем из кеша — мгновенно
       addSelBtn.disabled = true; addSelBtn.classList.add('is-loading');
       m.close();
-      U.toast('Добавлено: ' + tmpLines.length, 'success');
+      U.toast('Добавлено: ' + lines.length, 'success');
       refresh();
 
       // Отправляем на сервер последовательно
       var chain = Promise.resolve();
-      selected.forEach(function (p) {
-        var ld = {
-          n: '', section: p.section || '', name: p.name, unit: p.unit || '',
-          qty: qty, price: Number(p.price) || 0, coef: coef, material: material, note: note
-        };
+      lines.forEach(function (ld) {
+        var send = Object.assign({}, ld); delete send.__row;
         chain = chain.then(function () {
-          return apiPost('records:add', { token: Store.getToken(), objectId: id, line: ld });
+          return apiPost('records:add', { token: Store.getToken(), objectId: id, line: send });
         });
       });
       chain.then(function () {
@@ -448,7 +482,7 @@ window.ObjectCard = (function () {
       var lineData = {
         n: '', section: sectI.value.trim(), name: name, unit: unitI.value.trim(),
         qty: Number(qtyI.value) || 0, price: Number(priceI.value) || 0,
-        coef: Number(coefI.value) || 1, material: matI.checked ? 1 : 0, note: noteI.value.trim()
+        coef: Number(coefI.value) || 1, note: noteI.value.trim()
       };
       lineData.sum = calcLineSum(lineData);
 

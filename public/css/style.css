@@ -196,6 +196,7 @@ a { color: var(--primary); }
 
 /* --- Суммарная плашка --- */
 .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 10px; }
+.totals--3col { grid-template-columns: 1fr 1fr 1fr; }
 .totals__cell { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px; }
 .totals__label { color: var(--muted); font-size: 12px; }
 .totals__value { font-size: 17px; font-weight: 700; margin-top: 2px; }

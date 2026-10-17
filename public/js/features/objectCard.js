@@ -34,6 +34,14 @@ window.ObjectCard = (function () {
     }
     return Math.round(s);
   }
+  // Только размер наценки (0, если не применена). Логика расчёта — как в purchaseTotal.
+  function purchaseMarkup(pur, o) {
+    if (!o || !o.purchaseMarkup) return 0;
+    var s = sum(pur || [], function (r) { return r.sum; });
+    var m = s * 0.10;
+    if (m < 1500) m = 1500;
+    return Math.round(m);
+  }
 
   // Горизонтальная лента фото (поддержка нескольких фото чека)
   function photoStrip(r) {
@@ -622,6 +630,7 @@ window.ObjectCard = (function () {
   function renderPurchase(root, id, data, refresh) {
     var pur = data.purchases || [];
     var total = purchaseTotal(pur, data.object);
+    var markup = purchaseMarkup(pur, data.object);
 
     root.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Закупка (' + pur.length + ')' }),
@@ -655,10 +664,14 @@ window.ObjectCard = (function () {
       });
     }
 
-    root.appendChild(U.el('div', { class: 'totals' }, [
+    root.appendChild(U.el('div', { class: 'totals totals--3col' }, [
       U.el('div', { class: 'totals__cell' }, [
         U.el('div', { class: 'totals__label', text: 'Итог закупки' }),
         U.el('div', { class: 'totals__value money', text: U.money(total) })
+      ]),
+      U.el('div', { class: 'totals__cell' }, [
+        U.el('div', { class: 'totals__label', text: 'Наценка' }),
+        U.el('div', { class: 'totals__value money', text: U.money(markup) })
       ]),
       U.el('div', { class: 'totals__cell' }, [
         U.el('div', { class: 'totals__label', text: 'Позиций' }),

@@ -408,8 +408,10 @@ window.ObjectCard = (function () {
         setActive(s);
       }
       if (itemMap[p]) {
-        itemMap[p].classList.toggle('pricelist__item--selected', isSelected(p));
-        itemMap[p].setAttribute('aria-pressed', isSelected(p) ? 'true' : 'false');
+        var sel = isSelected(p);
+        itemMap[p].classList.toggle('pricelist__item--selected', sel);
+        itemMap[p].setAttribute('aria-pressed', sel ? 'true' : 'false');
+        itemMap[p].setAttribute('aria-label', (sel ? 'Снять выбор: ' : 'Выбрать: ') + p.name);
       }
       updateSelBtn();
     }
@@ -451,21 +453,18 @@ window.ObjectCard = (function () {
         listBox.appendChild(secHead);
         if (!open) return;
         bySec[sec].forEach(function (p) {
-          // Нативный чекбокс убран: выбор показываем мягким свечением,
-          // акцентной левой полосой и круглой галочкой справа (.pricelist__check).
-          var check = U.el('span', { class: 'pricelist__check', 'aria-hidden': 'true', text: '✓' });
+          // Чекбокс и кружок-индикатор убраны ради компактности.
+          // Выбор показывается только мягким свечением и акцентной левой полосой
+          // через класс .pricelist__item--selected (см. style.css).
           var itemEl = U.el('div', {
             class: 'card pricelist__item' + (isSelected(p) ? ' pricelist__item--selected' : ''),
-            role: 'button', tabindex: '0', 'aria-pressed': isSelected(p) ? 'true' : 'false', 'aria-label': 'Выбрать ' + p.name,
-            style: { padding: '8px 10px', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer' },
+            role: 'button', tabindex: '0', 'aria-pressed': isSelected(p) ? 'true' : 'false', 'aria-label': (isSelected(p) ? 'Снять выбор: ' : 'Выбрать: ') + p.name,
+            style: { padding: '8px 10px', marginBottom: '6px', cursor: 'pointer' },
             onclick: function () { toggleSel(p); },
             onkeydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSel(p); } }
           }, [
-            U.el('div', { style: { flex: '1', minWidth: '0' } }, [
-              U.el('div', { style: { fontWeight: '600' }, text: p.name }),
-              U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
-            ]),
-            check
+            U.el('div', { style: { fontWeight: '600' }, text: p.name }),
+            U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
           ]);
           itemMap[p] = itemEl;
           listBox.appendChild(itemEl);

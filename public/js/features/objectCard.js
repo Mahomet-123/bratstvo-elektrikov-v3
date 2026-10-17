@@ -669,9 +669,14 @@ window.ObjectCard = (function () {
         U.el('div', { class: 'totals__label', text: 'Итог закупки' }),
         U.el('div', { class: 'totals__value money', text: U.money(total) })
       ]),
-      U.el('div', { class: 'totals__cell' }, [
+      U.el('div', {
+        class: 'totals__cell totals__cell--clickable' + (data.object.purchaseMarkup ? '' : ' totals__cell--off'),
+        title: 'Клик — вкл/выкл наценку на материал',
+        onclick: function () { togglePurchaseMarkup(id); }
+      }, [
         U.el('div', { class: 'totals__label', text: 'Наценка' }),
-        U.el('div', { class: 'totals__value money', text: U.money(markup) })
+        U.el('div', { class: 'totals__value money', text: U.money(markup) }),
+        U.el('div', { class: 'totals__hint', text: data.object.purchaseMarkup ? 'вкл · клик для выкл' : 'выкл · клик для вкл' })
       ]),
       U.el('div', { class: 'totals__cell' }, [
         U.el('div', { class: 'totals__label', text: 'Позиций' }),
@@ -693,6 +698,20 @@ window.ObjectCard = (function () {
         .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); U.toast('Удалено', 'success'); bgSync(id); })
         .catch(function (e) { U.toast(e.message || 'Ошибка удаления', 'error'); bgSync(id); });
     });
+  }
+
+  // Клик по ячейке «Наценка» в сводке закупки — вкл/выкл наценки на материал.
+  // Аналогично переключателю в модалке, но с мгновенной перерисовкой вкладки.
+  function togglePurchaseMarkup(id) {
+    var obj = OBJ[id] && OBJ[id].object;
+    if (!obj) return;
+    var on = obj.purchaseMarkup ? 0 : 1;
+    obj.purchaseMarkup = on;
+    persist(id);
+    renderFromCache(id, 'purchase'); // мгновенно пересчитываем итоги из кеша
+    apiPost('objects:update', { token: Store.getToken(), id: id, patch: { purchaseMarkup: on } })
+      .then(function (d) { if (!d.ok) throw new Error(d.error || 'Ошибка'); })
+      .catch(function () { /* фоновая синхронизация исправит */ });
   }
 
   function purchaseModal(id, refresh, existing) {

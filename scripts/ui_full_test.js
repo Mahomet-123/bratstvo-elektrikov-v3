@@ -89,10 +89,12 @@ const MOCK_JS = function () {
       }
       case 'purchases:add': {
         var po = DB.data[p.objectId]; if (!po) return { ok: false, error: 'нет объекта' };
-        var pr = Object.assign({}, p.purchase); pr.__row = uid('p'); po.purchases.push(pr); return { ok: true };
+        var pr = Object.assign({}, p.purchase);
+        pr.sum = Math.round((Number(pr.qty) || 0) * (Number(pr.price) || 0)); // бэкенд сам считает sum
+        pr.__row = uid('p'); po.purchases.push(pr); return { ok: true };
       }
       case 'purchases:update': {
-        var po2 = DB.data[p.objectId]; if (po2) po2.purchases = po2.purchases.map(function (r) { return r.__row === p.rowNum ? Object.assign({}, r, p.purchase) : r; });
+        var po2 = DB.data[p.objectId]; if (po2) po2.purchases = po2.purchases.map(function (r) { var u = Object.assign({}, r, p.purchase); u.sum = Math.round((Number(u.qty) || 0) * (Number(u.price) || 0)); return u; });
         return { ok: true };
       }
       case 'purchases:remove': {
@@ -376,6 +378,33 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
         return Array.prototype.some.call(document.querySelectorAll('.tab-content .card'), function (c) { return (c.textContent || '').indexOf('Кабель ВВГ') >= 0; });
       }, 3000);
       rec('Закупка: материалы добавлены', purAdded);
+
+      // Наценка: клик по ячейке «Наценка» в сводке закупки (вкл/выкл)
+      var markBefore = await page.evaluate(function () {
+        var id = window.__mockDb.objects[0].id;
+        try { return JSON.parse(localStorage.getItem('be_obj_' + id)).object.purchaseMarkup; } catch (e) { return null; }
+      });
+      var cellClicked = await page.evaluate(function () {
+        var cell = document.querySelector('.totals__cell--clickable');
+        if (!cell) return false;
+        cell.click();
+        return true;
+      });
+      await sleep(450);
+      var markAfter = await page.evaluate(function () {
+        var id = window.__mockDb.objects[0].id;
+        var cache = null; try { cache = JSON.parse(localStorage.getItem('be_obj_' + id)); } catch (e) {}
+        var cell = document.querySelector('.totals__cell--clickable');
+        var cells = document.querySelectorAll('.totals--3col .totals__cell');
+        return {
+          mark: cache && cache.object ? cache.object.purchaseMarkup : null,
+          hint: cell ? (cell.textContent || '') : '',
+          itogo: cells[0] ? (cells[0].textContent || '') : ''
+        };
+      });
+      rec('Наценка: ячейка кликабельна и переключает флаг', cellClicked && markBefore === 0 && markAfter.mark === 1, JSON.stringify({ before: markBefore, after: markAfter }));
+      rec('Наценка: итог закупки пересчитан при включении (400 → 1 900)', /1[ . ]?900/.test(markAfter.itogo.replace(/\s/g, '')), markAfter.itogo);
+      await page.screenshot({ path: path.resolve(__dirname, 'shot_purchase_markup.png') });
     }
 
     // День
@@ -432,6 +461,17 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     }
     rec('Админ: панель открылась', adminOk);
     await page.screenshot({ path: path.resolve(__dirname, 'shot_admin.png') });
+    if (adminOk) {
+      var adminCache = await page.evaluate(function () {
+        return {
+          report: !!localStorage.getItem('be_report'),
+          analytics: !!localStorage.getItem('be_analytics'),
+          archive: !!localStorage.getItem('be_archive'),
+          users: !!localStorage.getItem('be_users')
+        };
+      });
+      rec('Админ: офлайн-кэш записан в localStorage', adminCache.report && adminCache.analytics && adminCache.archive && adminCache.users, JSON.stringify(adminCache));
+    }
     if (adminOk) {
       var analyticsOk = await clickText(page, '.tabs__btn', 'Аналитика');
       await sleep(300);

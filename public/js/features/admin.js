@@ -1,4 +1,7 @@
 // admin.js — панель руководителя: отчёт, аналитика, архив, пользователи.
+// Офлайн-first: сначала рисуем из локального кеша (Store), параллельно
+// фоновая синхронизация с GAS обновляет кеш и перерисовывает активную
+// вкладку. На мутации (users:save) оптимистично правим кеш, затем bgSync.
 window.Admin = (function () {
 
   var TABS = [
@@ -8,40 +11,117 @@ window.Admin = (function () {
     { key: 'users', label: 'Люди' }
   ];
 
+  // Состояние оболочки админки (переживает только текущий рендер).
+  var ADMIN = { app: null, content: null, active: 'report', data: null };
+
+  function readCache() {
+    return {
+      report: Store.getReportCache(),
+      analytics: Store.getAnalyticsCache(),
+      archive: Store.getArchiveCache(),
+      users: Store.getUsersCache()
+    };
+  }
+
+  function setCacheKey(key, d) {
+    if (key === 'report') Store.setReportCache(d);
+    else if (key === 'analytics') Store.setAnalyticsCache(d);
+    else if (key === 'archive') Store.setArchiveCache(d);
+    else if (key === 'users') Store.setUsersCache(d);
+  }
+
+  function fetchOne(action, key, token) {
+    // Тихий GET (без тостов об ошибке). Кладёт валидный ответ в кеш.
+    return apiGet(action, { token: token }, { silent: true })
+      .then(function (d) { if (d && d.ok) { setCacheKey(key, d); } return d && d.ok; })
+      .catch(function () { return false; });
+  }
+
   function render() {
     var app = U.$('#app');
-    U.loading(app, 'Загрузка…');
-    loadAll().then(function (data) { show(app, data, 'report'); })
-      .catch(function (err) { U.emptyState(app, 'Нет доступа', String(err && err.message || err)); });
-  }
-
-  function loadAll() {
-    return Promise.all([
-      apiGet('status:report', { token: Store.getToken() }),
-      apiGet('analytics', { token: Store.getToken() }),
-      apiGet('archive', { token: Store.getToken() }),
-      apiGet('users:list', { token: Store.getToken() })
-    ]).then(function (r) {
-      return { report: r[0], analytics: r[1], archive: r[2], users: r[3] };
-    });
-  }
-
-  function show(app, data, active) {
+    ADMIN.app = app;
+    ADMIN.active = 'report';
     U.clear(app);
-    app.appendChild(U.el('div', { class: 'section-head' }, [U.el('div', { class: 'section-head__title', text: 'Панель руководителя' })]));
+
+    buildShell(app);
+    ADMIN.data = readCache();
+    var hasData = !!(ADMIN.data.report && ADMIN.data.report.ok);
+    if (hasData) {
+      renderActive();
+    } else {
+      U.loading(ADMIN.content, 'Загрузка…');
+    }
+    bgSync(!hasData);
+  }
+
+  function buildShell(app) {
+    app.appendChild(U.el('div', { class: 'section-head' }, [
+      U.el('div', { class: 'section-head__title', text: 'Панель руководителя' }),
+      U.el('button', {
+        class: 'btn btn--sm', type: 'button', 'aria-label': 'Обновить с сервера', title: 'Обновить с сервера',
+        text: '↻', onclick: function () { bgSync(false, true); }
+      })
+    ]));
     var tabsBar = U.el('div', { class: 'tabs' });
     TABS.forEach(function (t) {
-      tabsBar.appendChild(U.el('button', {
-        class: 'tabs__btn' + (t.key === active ? ' tabs__btn--active' : ''), text: t.label,
-        onclick: function () { show(app, data, t.key); }
-      }));
+      var btn = U.el('button', {
+        class: 'tabs__btn', type: 'button', text: t.label,
+        'data-key': t.key,
+        onclick: function () { ADMIN.active = t.key; updateTabsActive(); renderActive(); }
+      });
+      tabsBar.appendChild(btn);
     });
     app.appendChild(tabsBar);
-    var c = U.el('div'); app.appendChild(c);
-    if (active === 'report') renderReport(c, data.report);
-    else if (active === 'analytics') renderAnalytics(c, data.analytics);
-    else if (active === 'archive') renderArchive(c, data.archive);
-    else renderUsers(c, data.users, function () { loadAll().then(function (d) { data = d; renderUsers(c, d.users, arguments.callee); }); });
+    ADMIN.content = U.el('div');
+    app.appendChild(ADMIN.content);
+    updateTabsActive();
+  }
+
+  function updateTabsActive() {
+    if (!ADMIN.app) return;
+    var btns = ADMIN.app.querySelectorAll('.tabs__btn');
+    Array.prototype.forEach.call(btns, function (b) {
+      b.classList.toggle('tabs__btn--active', b.getAttribute('data-key') === ADMIN.active);
+    });
+  }
+
+  function renderActive() {
+    if (!ADMIN.content) return;
+    U.clear(ADMIN.content);
+    var d = ADMIN.data || {};
+    if (ADMIN.active === 'report') renderReport(ADMIN.content, d.report);
+    else if (ADMIN.active === 'analytics') renderAnalytics(ADMIN.content, d.analytics);
+    else if (ADMIN.active === 'archive') renderArchive(ADMIN.content, d.archive);
+    else renderUsers(ADMIN.content, d.users, refreshUsers);
+  }
+
+  function bgSync(noCache, manual) {
+    var token = Store.getToken();
+    if (!token) return;
+    Promise.all([
+      fetchOne('status:report', 'report', token),
+      fetchOne('analytics', 'analytics', token),
+      fetchOne('archive', 'archive', token),
+      fetchOne('users:list', 'users', token)
+    ]).then(function (oks) {
+      ADMIN.data = readCache();
+      var anyOk = oks.some(function (x) { return x; });
+      // Если у пользователя не было кеша и сеть не дала ничего — честно говорим.
+      if (noCache && !anyOk) {
+        U.clear(ADMIN.content);
+        U.emptyState(ADMIN.content, 'Нет доступа', 'Не удалось загрузить данные. Проверьте соединение и нажмите ↻.');
+        return;
+      }
+      renderActive();
+    });
+  }
+
+  // Колбэк после мутации (например, сохранение пользователя): оптимистично
+  // обновляем затронутый кусок кеша и инициируем фоновую синхронизацию.
+  function refreshUsers() {
+    // На мутации просто триггерим bgSync, он подтянет свежий список users
+    // и перерисует активную вкладку (если это «Люди»).
+    bgSync(false, true);
   }
 
   function renderReport(root, d) {
@@ -174,6 +254,18 @@ window.Admin = (function () {
       }).then(function (d) {
         if (!d.ok) throw new Error(d.error || 'Ошибка');
         m.close(); U.toast('Сохранено', 'success');
+        // Оптимистично правим кеш users (заменяем изменённого), затем bgSync подтянет правду.
+        var cur = Store.getUsersCache();
+        if (cur && cur.ok && Array.isArray(cur.users)) {
+          var i = cur.users.findIndex(function (x) { return x.login === u.login; });
+          if (i >= 0) cur.users[i] = Object.assign({}, cur.users[i], {
+            role: roleI.value, name: nameI.value.trim(), phone: phoneI.value.trim(),
+            active: activeI.checked ? 1 : 0
+          });
+          Store.setUsersCache(cur);
+          ADMIN.data = readCache();
+          renderActive();
+        }
         if (afterChange) afterChange();
       }).catch(function (e) { U.toast(e.message, 'error'); btn.disabled = false; });
     }

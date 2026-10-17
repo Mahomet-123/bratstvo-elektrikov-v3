@@ -200,6 +200,11 @@ a { color: var(--primary); }
 .totals__cell { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px; }
 .totals__label { color: var(--muted); font-size: 12px; }
 .totals__value { font-size: 17px; font-weight: 700; margin-top: 2px; }
+.totals__cell--clickable { cursor: pointer; transition: background .15s ease, transform .05s ease; border: 1px solid transparent; }
+.totals__cell--clickable:hover { background: var(--surface); border-color: var(--primary); }
+.totals__cell--clickable:active { transform: scale(.98); }
+.totals__cell--off { opacity: .68; }
+.totals__hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
 
 /* --- Спиннер / пусто --- */
 .loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; color: var(--muted); }

@@ -25,6 +25,16 @@ window.Store = (function () {
     getObjectCache: function (id) { return getJSON('be_obj_' + id) || null; },
     setObjectCache: function (id, v) { setJSON('be_obj_' + id, v || null); },
 
+    // Кеш админ-панели (отчёт руководителя). Сначала рисуем из кеша, потом фон в GAS.
+    getReportCache: function () { return getJSON('be_report') || null; },
+    setReportCache: function (v) { setJSON('be_report', v || null); },
+    getAnalyticsCache: function () { return getJSON('be_analytics') || null; },
+    setAnalyticsCache: function (v) { setJSON('be_analytics', v || null); },
+    getArchiveCache: function () { return getJSON('be_archive') || null; },
+    setArchiveCache: function (v) { setJSON('be_archive', v || null); },
+    getUsersCache: function () { return getJSON('be_users') || null; },
+    setUsersCache: function (v) { setJSON('be_users', v || null); },
+
     getTheme: function () { return get(K.THEME) || 'auto'; },
     setTheme: function (t) { set(K.THEME, t); },
 

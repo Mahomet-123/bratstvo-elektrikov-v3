@@ -1,6 +1,6 @@
 // api.js — клиент к Web App (Google Apps Script).
 // GET: параметры в query-string. POST: тело JSON с Content-Type text/plain (без CORS-preflight).
-window.API_URL = 'https://script.google.com/macros/s/AKfycbyKu6vKUx7jihgcPfX-xg3QPaM9--E64qQQ8OewnRPqcoSSHETGTzRKMvIaEIANCm6y6w/exec';
+window.API_URL = 'https://script.google.com/macros/s/AKfycby-M2dqZuLWY8ltzL47x3zV3xIyv4H5-fNM0WVvKiHm5Kreta6auMz-LRj0Gf-NnrexHQ/exec';
 
 window.api = function (action, params, opts) {
   opts = opts || {};

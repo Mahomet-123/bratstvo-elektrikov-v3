@@ -79,12 +79,13 @@ window.Admin = (function () {
       return U.el('tr', {}, [
         U.el('td', { text: m }), U.el('td', { class: 'right', text: String(v.objects) }),
         U.el('td', { class: 'right money', text: U.money(v.calc) }), U.el('td', { class: 'right money', text: U.money(v.purchase) }),
+        U.el('td', { class: 'right money', text: U.money(v.markup || 0) }),
         U.el('td', { class: 'right money ' + ((v.calc - v.purchase) >= 0 ? 'money--pos' : 'money--neg'), text: U.moneySigned(v.calc - v.purchase) })
       ]);
     });
     root.appendChild(U.el('div', { class: 'card', style: { overflowX: 'auto' } }, [
       U.el('table', { class: 'table' }, [
-        U.el('thead', {}, [U.el('tr', {}, [U.el('th', { text: 'Мастер' }), U.el('th', { class: 'right', text: 'Объекты' }), U.el('th', { class: 'right', text: 'Расчёт' }), U.el('th', { class: 'right', text: 'Закупка' }), U.el('th', { class: 'right', text: 'Прибыль' })])]),
+        U.el('thead', {}, [U.el('tr', {}, [U.el('th', { text: 'Мастер' }), U.el('th', { class: 'right', text: 'Объекты' }), U.el('th', { class: 'right', text: 'Расчёт' }), U.el('th', { class: 'right', text: 'Закупка' }), U.el('th', { class: 'right', text: 'Наценка' }), U.el('th', { class: 'right', text: 'Прибыль' })])]),
         U.el('tbody', {}, rows)
       ])
     ]));
@@ -97,9 +98,10 @@ window.Admin = (function () {
       ]));
     });
 
-    root.appendChild(U.el('div', { class: 'totals' }, [
+    root.appendChild(U.el('div', { class: 'totals totals--3col' }, [
       U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Всего расчёт' }), U.el('div', { class: 'totals__value money', text: U.money(an.totals.calc) })]),
-      U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Всего закупка' }), U.el('div', { class: 'totals__value money', text: U.money(an.totals.purchase) })])
+      U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Всего закупка' }), U.el('div', { class: 'totals__value money', text: U.money(an.totals.purchase) })]),
+      U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Всего наценка' }), U.el('div', { class: 'totals__value money', text: U.money(an.totals.markup || 0) })])
     ]));
   }
 

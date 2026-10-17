@@ -5,7 +5,7 @@
   "description": "PWA «Братство Электриков» — учёт работ и закупок бригады электриков",
   "scripts": {
     "gas:push": "clasp push --force",
-    "gas:deploy": "clasp deploy -i AKfycbyKu6vKUx7jihgcPfX-xg3QPaM9--E64qQQ8OewnRPqcoSSHETGTzRKMvIaEIANCm6y6w",
+    "gas:deploy": "clasp deploy -i AKfycby-M2dqZuLWY8ltzL47x3zV3xIyv4H5-fNM0WVvKiHm5Kreta6auMz-LRj0Gf-NnrexHQ",
     "gas:open": "clasp open",
     "gas:logs": "clasp logs"
   }

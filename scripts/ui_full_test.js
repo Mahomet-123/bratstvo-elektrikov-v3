@@ -130,9 +130,9 @@ const MOCK_JS = function () {
         lastVisits: [{ date: new Date().toISOString(), objectId: DB.objects[0] ? DB.objects[0].id : '1', master: 'Иван Иванов', note: 'Смонтировано' }]
       } };
       case 'analytics': return { ok: true, analytics: {
-        byMaster: { 'Иван Иванов': { objects: 1, calc: 5000, purchase: 1000 } },
+        byMaster: { 'Иван Иванов': { objects: 1, calc: 5000, purchase: 1000, markup: 1500 } },
         bySection: { 'Монтажные': 5000, 'Черновые': 2000 },
-        totals: { calc: 7000, purchase: 1000 }
+        totals: { calc: 7000, purchase: 1000, markup: 1500 }
       } };
       case 'archive': return { ok: true, archive: [] };
       case 'users:list': return { ok: true, users: clone(DB.users) };
@@ -437,6 +437,13 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
       await sleep(300);
       var anTab = await page.evaluate(function () { return !!document.querySelector('table'); });
       rec('Админ: вкладка Аналитика', analyticsOk && anTab);
+      var anMarkup = await page.evaluate(function () {
+        var txt = document.body.textContent || '';
+        var hasCol = (txt.indexOf('Наценка') >= 0) || (txt.indexOf('наценка') >= 0);
+        var hasTotal = (txt.indexOf('Всего наценка') >= 0);
+        return hasCol && hasTotal;
+      });
+      rec('Админ: аналитика содержит блок наценки', anMarkup);
       await clickText(page, '.tabs__btn', 'Архив');
       await sleep(300);
       await clickText(page, '.tabs__btn', 'Люди');

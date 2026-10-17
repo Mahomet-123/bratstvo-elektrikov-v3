@@ -40,16 +40,41 @@ function Admin_analytics() {
   var byMaster = {};
   objs.forEach(function (o) {
     var m = o.master || '—';
-    byMaster[m] = byMaster[m] || { objects: 0, calc: 0, purchase: 0 };
+    byMaster[m] = byMaster[m] || { objects: 0, calc: 0, purchase: 0, markup: 0 };
     byMaster[m].objects += 1;
   });
   calcs.forEach(function (r) {
     var o = findRow(CONFIG.SHEET_OBJECTS, 'id', r.objectId);
-    if (o) { var m = o.master || '—'; byMaster[m] = byMaster[m] || { objects: 0, calc: 0, purchase: 0 }; byMaster[m].calc += Number(r.sum) || 0; }
+    if (o) { var m = o.master || '—'; byMaster[m] = byMaster[m] || { objects: 0, calc: 0, purchase: 0, markup: 0 }; byMaster[m].calc += Number(r.sum) || 0; }
   });
   purs.forEach(function (r) {
     var o = findRow(CONFIG.SHEET_OBJECTS, 'id', r.objectId);
-    if (o) { var m = o.master || '—'; byMaster[m] = byMaster[m] || { objects: 0, calc: 0, purchase: 0 }; byMaster[m].purchase += Number(r.sum) || 0; }
+    if (o) { var m = o.master || '—'; byMaster[m] = byMaster[m] || { objects: 0, calc: 0, purchase: 0, markup: 0 }; byMaster[m].purchase += Number(r.sum) || 0; }
+  });
+
+  // Наценка по объектам: для каждого объекта с включённым purchaseMarkup
+  // markup = max(сумма_его_покупок * 0.10, 1500). Логика идентична purchaseTotal
+  // на клиенте (objectCard.js). purchase (raw) не трогаем — «Прибыль = calc − purchase»
+  // остаётся корректной. Наценка — отдельная колонка в аналитике.
+  var purchaseByObj = {};
+  purs.forEach(function (r) {
+    purchaseByObj[r.objectId] = (purchaseByObj[r.objectId] || 0) + (Number(r.sum) || 0);
+  });
+  var totalMarkup = 0;
+  Object.keys(purchaseByObj).forEach(function (oid) {
+    var o = findRow(CONFIG.SHEET_OBJECTS, 'id', oid);
+    if (!o) return;
+    var s = purchaseByObj[oid];
+    var mu = 0;
+    if (o.purchaseMarkup) {
+      mu = s * 0.10;
+      if (mu < 1500) mu = 1500;
+      mu = Math.round(mu);
+    }
+    var m = o.master || '—';
+    byMaster[m] = byMaster[m] || { objects: 0, calc: 0, purchase: 0, markup: 0 };
+    byMaster[m].markup += mu;
+    totalMarkup += mu;
   });
 
   // по разделам прайса
@@ -64,7 +89,8 @@ function Admin_analytics() {
     bySection: bySection,
     totals: {
       calc: calcs.reduce(function (s, r) { return s + (Number(r.sum) || 0); }, 0),
-      purchase: purs.reduce(function (s, r) { return s + (Number(r.sum) || 0); }, 0)
+      purchase: purs.reduce(function (s, r) { return s + (Number(r.sum) || 0); }, 0),
+      markup: totalMarkup
     }
   };
 }

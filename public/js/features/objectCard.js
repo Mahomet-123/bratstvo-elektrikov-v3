@@ -354,7 +354,7 @@ window.ObjectCard = (function () {
     var editing = !!line;
 
     var searchI = U.el('input', { class: 'input', placeholder: 'Поиск в прайс-листе…' });
-    var listBox = U.el('div', { class: 'pricelist', style: { maxHeight: '255px', overflowY: 'auto', marginBottom: '10px' } });
+    var listBox = U.el('div', { class: 'pricelist', style: { flex: '1 1 auto', minHeight: '150px', overflowY: 'auto', marginBottom: '0' } });
     var nameI = U.el('input', { class: 'input', placeholder: 'Наименование' });
     // Ед. изм. — компактный выпадающий список (собираем уникальные значения из прайса)
     var unitI = U.el('select', { class: 'select' });
@@ -378,7 +378,10 @@ window.ObjectCard = (function () {
     // редактируют активную выбранную позицию, данные сохраняются за каждой. ---
     var selected = []; // [{ p, qty, coef, price, note }]
     var active = null; // активная выбранная позиция (чьи данные сейчас в инпутах)
-    var itemMap = {};  // p -> элемент строки прайс-листа (для подсветки/свечения при выборе)
+    // ВАЖНО: ключ — сам объект прайс-позиции. В обычном объекте {} ключ бы
+    // привёлся к "[object Object]" и все записи перезаписывали бы одну — поэтому Map
+    // (хранит ссылочную идентичность, itemMap.get(p) всегда возвращает свой элемент).
+    var itemMap = new Map(); // p -> элемент строки прайс-листа (для подсветки/свечения при выборе)
 
     function findSel(p) { return selected.filter(function (s) { return s.p === p; })[0]; }
     function isSelected(p) { return !!findSel(p); }
@@ -407,11 +410,12 @@ window.ObjectCard = (function () {
         selected.push(s);
         setActive(s);
       }
-      if (itemMap[p]) {
+      var el = itemMap.get(p);
+      if (el) {
         var sel = isSelected(p);
-        itemMap[p].classList.toggle('pricelist__item--selected', sel);
-        itemMap[p].setAttribute('aria-pressed', sel ? 'true' : 'false');
-        itemMap[p].setAttribute('aria-label', (sel ? 'Снять выбор: ' : 'Выбрать: ') + p.name);
+        el.classList.toggle('pricelist__item--selected', sel);
+        el.setAttribute('aria-pressed', sel ? 'true' : 'false');
+        el.setAttribute('aria-label', (sel ? 'Снять выбор: ' : 'Выбрать: ') + p.name);
       }
       updateSelBtn();
     }
@@ -434,6 +438,7 @@ window.ObjectCard = (function () {
     var secOpen = {}; // разделы свёрнуты по умолчанию
     function renderList(q) {
       U.clear(listBox);
+      itemMap.clear();
       var ql = (q || '').toLowerCase();
       var work = prices.filter(function (p) {
         if (p.type && p.type !== 'work') return false;
@@ -466,7 +471,7 @@ window.ObjectCard = (function () {
             U.el('div', { style: { fontWeight: '600' }, text: p.name }),
             U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
           ]);
-          itemMap[p] = itemEl;
+          itemMap.set(p, itemEl);
           listBox.appendChild(itemEl);
         });
       });
@@ -480,9 +485,13 @@ window.ObjectCard = (function () {
       noteI.value = line.note || '';
     }
 
-    var body = U.el('div', {}, [
+    // Шапка (фиксированная): заголовок + поиск. Подвал (фиксированный):
+    // «Общие параметры» + поля + кнопки. Между ними прокручивается только список прайса.
+    var header = U.el('div', { class: 'calc-modal__head' }, [
       U.el('div', { class: 'modal__title', text: editing ? 'Редактировать позицию' : 'Новая позиция' }),
-      searchI, listBox,
+      searchI
+    ]);
+    var footer = U.el('div', { class: 'calc-modal__foot' }, [
       U.el('div', { class: 'card__sub', style: { marginBottom: '4px' }, text: 'Общие параметры для выбранных:' }),
       U.el('div', { class: 'field field--sm' }, [U.el('label', { class: 'field__label', text: 'Наименование' }), nameI]),
       U.el('div', { style: { display: 'flex', gap: '10px' } }, [
@@ -497,6 +506,7 @@ window.ObjectCard = (function () {
         editing ? U.el('button', { class: 'btn btn--primary', text: 'Сохранить', onclick: save }) : addSelBtn
       ])
     ]);
+    var body = U.el('div', { class: 'calc-modal' }, [ header, listBox, footer ]);
     var m = U.modal(body);
 
     // --- Пакетное добавление выбранных (пункт 1) ---

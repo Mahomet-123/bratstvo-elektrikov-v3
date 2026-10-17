@@ -354,7 +354,7 @@ window.ObjectCard = (function () {
     var editing = !!line;
 
     var searchI = U.el('input', { class: 'input', placeholder: 'Поиск в прайс-листе…' });
-    var listBox = U.el('div', { class: 'pricelist', style: { flex: '1 1 auto', minHeight: '150px', overflowY: 'auto', marginBottom: '0' } });
+    var listBox = U.el('div', { class: 'pricelist', style: { flex: '1 1 auto', minHeight: '260px', overflowY: 'auto', marginBottom: '0' } });
     var nameI = U.el('input', { class: 'input', placeholder: 'Наименование' });
     // Ед. изм. — компактный выпадающий список (собираем уникальные значения из прайса)
     var unitI = U.el('select', { class: 'select' });
@@ -486,20 +486,22 @@ window.ObjectCard = (function () {
     }
 
     // Шапка (фиксированная): заголовок + поиск. Подвал (фиксированный):
-    // «Общие параметры» + поля + кнопки. Между ними прокручивается только список прайса.
+    // поля + кнопки. Между ними прокручивается только список прайса.
+    // Подвал компактный: без шапки «Общие параметры…», без подписи «Наименование»
+    // (placeholder достаточно), «Коэф.» — в одном ряду с Ед./Кол-во/Цена (4 колонки),
+    // чтобы список получал максимум места (на больших экранах ~3.5–4 работы видны).
     var header = U.el('div', { class: 'calc-modal__head' }, [
       U.el('div', { class: 'modal__title', text: editing ? 'Редактировать позицию' : 'Новая позиция' }),
       searchI
     ]);
     var footer = U.el('div', { class: 'calc-modal__foot' }, [
-      U.el('div', { class: 'card__sub', style: { marginBottom: '4px' }, text: 'Общие параметры для выбранных:' }),
-      U.el('div', { class: 'field field--sm' }, [U.el('label', { class: 'field__label', text: 'Наименование' }), nameI]),
+      U.el('div', { class: 'field field--sm' }, [nameI]),
       U.el('div', { style: { display: 'flex', gap: '10px' } }, [
         U.el('div', { class: 'field field--sm', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Ед.' }), unitI]),
         U.el('div', { class: 'field field--sm', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Кол-во' }), qtyI]),
-        U.el('div', { class: 'field field--sm', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Цена' }), priceI])
+        U.el('div', { class: 'field field--sm', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Цена' }), priceI]),
+        U.el('div', { class: 'field field--sm', style: { flex: '1' } }, [U.el('label', { class: 'field__label', text: 'Коэф.' }), coefI])
       ]),
-      U.el('div', { class: 'field field--sm' }, [U.el('label', { class: 'field__label', text: 'Коэффициент' }), coefI]),
       U.el('div', { class: 'field field--sm' }, [U.el('label', { class: 'field__label', text: 'Примечание' }), noteI]),
       U.el('div', { class: 'row' }, [
         U.el('button', { class: 'btn btn--ghost', text: 'Отмена', onclick: function () { m.close(); } }),

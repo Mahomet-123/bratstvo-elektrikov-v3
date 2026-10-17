@@ -12,7 +12,7 @@ window.Admin = (function () {
   ];
 
   // Состояние оболочки админки (переживает только текущий рендер).
-  var ADMIN = { app: null, content: null, active: 'report', data: null };
+  var ADMIN = { app: null, content: null, active: 'report', data: null, refreshing: false, refreshBtn: null };
 
   function readCache() {
     return {
@@ -41,6 +41,7 @@ window.Admin = (function () {
     var app = U.$('#app');
     ADMIN.app = app;
     ADMIN.active = 'report';
+    ADMIN.refreshing = false; // сбросить «в полёте» от прошлого входа в админку
     U.clear(app);
 
     buildShell(app);
@@ -55,12 +56,15 @@ window.Admin = (function () {
   }
 
   function buildShell(app) {
+    ADMIN.refreshBtn = U.el('button', {
+      class: 'btn btn--sm', type: 'button',
+      'aria-label': 'Обновить с сервера', title: 'Обновить с сервера',
+      text: '↻', style: { minWidth: '40px' },
+      onclick: manualRefresh
+    });
     app.appendChild(U.el('div', { class: 'section-head' }, [
       U.el('div', { class: 'section-head__title', text: 'Панель руководителя' }),
-      U.el('button', {
-        class: 'btn btn--sm', type: 'button', 'aria-label': 'Обновить с сервера', title: 'Обновить с сервера',
-        text: '↻', onclick: function () { bgSync(false, true); }
-      })
+      ADMIN.refreshBtn
     ]));
     var tabsBar = U.el('div', { class: 'tabs' });
     TABS.forEach(function (t) {
@@ -97,8 +101,8 @@ window.Admin = (function () {
 
   function bgSync(noCache, manual) {
     var token = Store.getToken();
-    if (!token) return;
-    Promise.all([
+    if (!token) return Promise.resolve();
+    return Promise.all([
       fetchOne('status:report', 'report', token),
       fetchOne('analytics', 'analytics', token),
       fetchOne('archive', 'archive', token),
@@ -114,6 +118,34 @@ window.Admin = (function () {
       }
       renderActive();
     });
+  }
+
+  // Ручное обновление (клик по ↻): показываем спиннер на кнопке,
+  // чтобы пользователь видел, что клик сработал и запрос ушёл.
+  // Дебаунс через ADMIN.refreshing — повторные клики во время загрузки игнорируются.
+  function manualRefresh() {
+    if (ADMIN.refreshing) return;
+    ADMIN.refreshing = true;
+    setRefreshing(true);
+    var p = bgSync(false, true);
+    (p || Promise.resolve()).finally(function () {
+      ADMIN.refreshing = false;
+      setRefreshing(false);
+    });
+  }
+
+  function setRefreshing(on) {
+    var b = ADMIN.refreshBtn;
+    if (!b) return;
+    if (on) {
+      b.classList.add('is-loading');
+      b.disabled = true;
+      b.setAttribute('aria-busy', 'true');
+    } else {
+      b.classList.remove('is-loading');
+      b.disabled = false;
+      b.removeAttribute('aria-busy');
+    }
   }
 
   // Колбэк после мутации (например, сохранение пользователя): оптимистично

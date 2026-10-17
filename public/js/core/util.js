@@ -129,5 +129,49 @@ window.U = {
       U.el('div', { class: 'empty__text', text: text || 'Нет данных' }),
       sub ? U.el('div', { class: 'empty__sub', text: sub }) : null
     ]));
+  },
+
+  // Лайтбокс просмотра фото: открывает фото в полноэкранной модалке,
+  // поддерживает листание (кнопки + свайп + клавиатура) при нескольких фото.
+  lightbox: function (urls, index) {
+    if (!urls || !urls.length) return null;
+    index = index || 0;
+    var root = U.$('#modalRoot') || document.body;
+    var img = U.el('img', { class: 'lightbox__img', src: urls[index], alt: '' });
+    var counter = U.el('div', { class: 'lightbox__counter' });
+    var prev = U.el('button', { class: 'lightbox__nav lightbox__nav--prev', 'aria-label': 'Предыдущее', text: '‹' });
+    var next = U.el('button', { class: 'lightbox__nav lightbox__nav--next', 'aria-label': 'Следующее', text: '›' });
+    var closeB = U.el('button', { class: 'lightbox__close', 'aria-label': 'Закрыть', text: '✕' });
+    function render(i) {
+      index = (i + urls.length) % urls.length;
+      img.src = urls[index];
+      counter.textContent = (index + 1) + ' / ' + urls.length;
+      var multi = urls.length > 1;
+      prev.style.display = multi ? '' : 'none';
+      next.style.display = multi ? '' : 'none';
+    }
+    prev.addEventListener('click', function (e) { e.stopPropagation(); render(index - 1); });
+    next.addEventListener('click', function (e) { e.stopPropagation(); render(index + 1); });
+    closeB.addEventListener('click', function (e) { e.stopPropagation(); close(); });
+    var overlay = U.el('div', { class: 'lightbox-overlay' }, [closeB, prev, img, next, counter]);
+    function close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); document.removeEventListener('keydown', onKey); }
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    var startX = null;
+    overlay.addEventListener('touchstart', function (e) { startX = e.touches[0].clientX; }, { passive: true });
+    overlay.addEventListener('touchend', function (e) {
+      if (startX == null) return;
+      var dx = e.changedTouches[0].clientX - startX;
+      if (Math.abs(dx) > 40) render(index + (dx < 0 ? 1 : -1));
+      startX = null;
+    });
+    function onKey(e) {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowLeft') render(index - 1);
+      else if (e.key === 'ArrowRight') render(index + 1);
+    }
+    document.addEventListener('keydown', onKey);
+    root.appendChild(overlay);
+    render(index);
+    return { close: close };
   }
 };

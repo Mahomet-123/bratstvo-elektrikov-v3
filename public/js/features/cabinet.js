@@ -70,8 +70,10 @@ function renderPurchases(purchases) {
       (function () {
         var urls = (r.photos && r.photos.length) ? r.photos : (r.photo ? [r.photo] : []);
         if (!urls.length) return null;
-        return U.el('div', { class: 'photo-grid', style: { marginTop: '6px' } }, urls.map(function (u) {
-          return U.el('div', { class: 'photo-item' }, [U.el('img', { class: 'photo-item__img', src: u, loading: 'lazy', alt: 'Фото накладной' })]);
+        return U.el('div', { class: 'photo-grid', style: { marginTop: '6px' } }, urls.map(function (u, i) {
+          return U.el('div', { class: 'photo-item' }, [
+            U.el('img', { class: 'photo-item__img', src: u, loading: 'lazy', alt: 'Фото накладной', onclick: function () { if (U.lightbox) U.lightbox(urls, i); } })
+          ]);
         }));
       })(),
       r.note ? U.el('div', { class: 'card__sub', text: '📝 ' + r.note }) : null

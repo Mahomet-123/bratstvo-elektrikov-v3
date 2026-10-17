@@ -364,6 +364,10 @@ window.ObjectCard = (function () {
       ['—'].concat(common, Object.keys(extra)).forEach(function (u) {
         unitI.appendChild(U.el('option', { value: u === '—' ? '' : u, text: u }));
       });
+      // При редактировании — гарантируем, что единица из существующей строки есть в списке
+      if (editing && line && line.unit && !Array.prototype.some.call(unitI.options, function (o) { return o.value === line.unit; })) {
+        unitI.appendChild(U.el('option', { value: line.unit, text: line.unit }));
+      }
     })();
     var qtyI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Кол-во', value: '1' });
     var priceI = U.el('input', { class: 'input', type: 'number', step: 'any', placeholder: 'Цена' });
@@ -374,8 +378,7 @@ window.ObjectCard = (function () {
     // редактируют активную выбранную позицию, данные сохраняются за каждой. ---
     var selected = []; // [{ p, qty, coef, price, note }]
     var active = null; // активная выбранная позиция (чьи данные сейчас в инпутах)
-    var cbMap = {};    // p -> чекбокс (индикатор; переключение — тапом по карточке)
-    var itemMap = {};  // p -> элемент строки прайс-листа (для подсветки выбора)
+    var itemMap = {};  // p -> элемент строки прайс-листа (для подсветки/свечения при выборе)
 
     function findSel(p) { return selected.filter(function (s) { return s.p === p; })[0]; }
     function isSelected(p) { return !!findSel(p); }
@@ -404,8 +407,10 @@ window.ObjectCard = (function () {
         selected.push(s);
         setActive(s);
       }
-      if (cbMap[p]) cbMap[p].checked = isSelected(p);
-      if (itemMap[p]) itemMap[p].classList.toggle('is-selected', isSelected(p));
+      if (itemMap[p]) {
+        itemMap[p].classList.toggle('pricelist__item--selected', isSelected(p));
+        itemMap[p].setAttribute('aria-pressed', isSelected(p) ? 'true' : 'false');
+      }
       updateSelBtn();
     }
 
@@ -446,20 +451,21 @@ window.ObjectCard = (function () {
         listBox.appendChild(secHead);
         if (!open) return;
         bySec[sec].forEach(function (p) {
-          var cb = U.el('input', { type: 'checkbox', 'aria-label': 'Выбрать ' + p.name });
-          cb.checked = isSelected(p);
-          cb.style.pointerEvents = 'none'; // индикатор; переключение — тапом по карточке
-          cbMap[p] = cb;
+          // Нативный чекбокс убран: выбор показываем мягким свечением,
+          // акцентной левой полосой и круглой галочкой справа (.pricelist__check).
+          var check = U.el('span', { class: 'pricelist__check', 'aria-hidden': 'true', text: '✓' });
           var itemEl = U.el('div', {
-            class: 'card pricelist__item' + (isSelected(p) ? ' is-selected' : ''),
-            style: { padding: '8px 10px', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'flex-start', cursor: 'pointer' },
-            onclick: function () { toggleSel(p); }
+            class: 'card pricelist__item' + (isSelected(p) ? ' pricelist__item--selected' : ''),
+            role: 'button', tabindex: '0', 'aria-pressed': isSelected(p) ? 'true' : 'false', 'aria-label': 'Выбрать ' + p.name,
+            style: { padding: '8px 10px', marginBottom: '6px', display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer' },
+            onclick: function () { toggleSel(p); },
+            onkeydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleSel(p); } }
           }, [
-            U.el('div', { style: { paddingTop: '2px' } }, [cb]),
             U.el('div', { style: { flex: '1', minWidth: '0' } }, [
               U.el('div', { style: { fontWeight: '600' }, text: p.name }),
               U.el('div', { class: 'card__sub', text: U.money(p.price) + '/' + (p.unit || '') })
-            ])
+            ]),
+            check
           ]);
           itemMap[p] = itemEl;
           listBox.appendChild(itemEl);

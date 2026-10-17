@@ -97,7 +97,7 @@ a { color: var(--primary); }
 .iconbtn--danger:active { background: rgba(211,51,51,.14); }
 
 /* --- Контейнер --- */
-.app { padding: 14px 12px 24px; max-width: 720px; margin: 0 auto; }
+.app { padding: 12px 12px 22px; max-width: 720px; margin: 0 auto; }
 .appbar + .offline-badge + .app, .app { /* nothing */ }
 
 /* --- Offline badge --- */
@@ -130,10 +130,10 @@ a { color: var(--primary); }
 /* --- Cards --- */
 .card {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 14px; margin-bottom: 12px; box-shadow: var(--shadow);
+  border-radius: var(--radius); padding: 11px; margin-bottom: 8px; box-shadow: var(--shadow);
 }
-.card__title { font-weight: 700; font-size: 16px; margin: 0 0 4px; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
-.card__sub { color: var(--muted); font-size: 13px; }
+.card__title { font-weight: 700; font-size: 15px; margin: 0 0 3px; overflow-wrap: anywhere; word-break: break-word; min-width: 0; }
+.card__sub { color: var(--muted); font-size: 12px; }
 .card--clickable { cursor: pointer; transition: transform .08s ease; }
 .card--clickable:active { transform: scale(.985); }
 
@@ -153,7 +153,7 @@ a { color: var(--primary); }
 .btn:disabled { opacity: .5; cursor: default; }
 
 /* --- Формы --- */
-.field { margin-bottom: 12px; min-width: 0; }
+.field { margin-bottom: 10px; min-width: 0; }
 .field__label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; font-weight: 600; }
 .input, .select, .textarea {
   width: 100%; min-width: 0; border: 1px solid var(--border); background: var(--surface);
@@ -195,10 +195,10 @@ a { color: var(--primary); }
 .pill--danger { background: var(--danger-soft); color: var(--danger); }
 
 /* --- Суммарная плашка --- */
-.totals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 14px; }
-.totals__cell { background: var(--surface-2); border-radius: var(--radius-sm); padding: 12px; }
+.totals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 4px 0 10px; }
+.totals__cell { background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px; }
 .totals__label { color: var(--muted); font-size: 12px; }
-.totals__value { font-size: 18px; font-weight: 700; margin-top: 2px; }
+.totals__value { font-size: 17px; font-weight: 700; margin-top: 2px; }
 
 /* --- Спиннер / пусто --- */
 .loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 0; color: var(--muted); }
@@ -238,18 +238,18 @@ a { color: var(--primary); }
 .auth__hint { font-size: 13px; color: var(--muted); text-align: center; margin-top: 14px; }
 
 /* --- Бейдж счёта --- */
-.section-head { display: flex; align-items: center; justify-content: space-between; margin: 4px 2px 10px; }
-.section-head__title { font-size: 15px; font-weight: 700; }
+.section-head { display: flex; align-items: center; justify-content: space-between; margin: 2px 2px 8px; }
+.section-head__title { font-size: 14px; font-weight: 700; }
 .linkbtn { background: none; border: none; color: var(--primary); font-weight: 600; font-size: 14px; cursor: pointer; padding: 4px; }
 
 /* --- Мини-превью фото --- */
 .thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
 
 /* --- Статус-бар в шапке объекта --- */
-.objhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.objhead { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
 .objhead > .card__title { min-width: 0; flex: 1 1 auto; }
 .objhead > .money, .objhead > .pill { flex: 0 0 auto; white-space: nowrap; }
-.objhead__code { font-size: 12px; color: var(--muted); font-weight: 600; overflow-wrap: anywhere; word-break: break-word; }
+.objhead__code { font-size: 11px; color: var(--muted); font-weight: 600; overflow-wrap: anywhere; word-break: break-word; margin-top: 2px; }
 
 /* --- Клиентский кабинет --- */
 .cabinet { max-width: 640px; margin: 0 auto; }
@@ -265,7 +265,7 @@ a { color: var(--primary); }
 .btn--ghost.is-loading::after, .btn--sm.is-loading::after { border-color: rgba(0,0,0,.25); border-top-color: var(--text); }
 
 /* --- Индикатор синхронизации в шапке объекта --- */
-.objsync { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.objsync { display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .pill--ok { background: var(--success-soft); color: var(--success); }
 .pill--warn { background: #fdf2dc; color: var(--warn); }
 
@@ -273,12 +273,28 @@ a { color: var(--primary); }
 .iconbtn--pending { color: var(--warn); }
 .iconbtn.spin svg, .iconbtn.spin { animation: spin .8s linear infinite; transform-origin: center; }
 
-/* --- Список прайс-листа в модалке --- */
+/* --- Список прайс-листа в модалке (выбор без нативного чекбокса) --- */
 .pricelist { margin-top: 6px; }
-.pricelist__sec { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin: 8px 0 4px; }
-.pricelist__item { transition: background .1s ease; }
-.pricelist__item.is-selected { border-color: var(--primary); background: var(--surface-2); }
-.pricelist__sec { cursor: pointer; user-select: none; padding: 4px 2px; }
+.pricelist__sec { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; margin: 8px 0 4px; cursor: pointer; user-select: none; padding: 4px 2px; }
+.pricelist__item { transition: background .1s ease, box-shadow .12s ease, border-color .12s ease; align-items: center; }
+/* Круглый индикатор выбора (скрыт, пока позиция не выбрана) */
+.pricelist__check {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid var(--border); color: transparent;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; line-height: 1;
+  transition: all .12s ease;
+}
+/* Выбранная позиция: акцентная левая полоса (без сдвига вёрстки) +
+   мягкое свечение + залитая галочка */
+.pricelist__item--selected {
+  border-color: var(--primary);
+  background: var(--surface-2);
+  box-shadow: inset 3px 0 0 0 var(--primary), 0 0 0 2px rgba(27, 110, 243, .18), var(--shadow);
+}
+.pricelist__item--selected .pricelist__check {
+  border-color: var(--primary); background: var(--primary); color: var(--primary-contrast);
+}
 
 /* --- Мини-превью фото чека (блочное) --- */
 .thumb--block { width: 100%; max-width: 220px; height: auto; aspect-ratio: 4 / 3; object-fit: cover; }
@@ -315,7 +331,7 @@ a { color: var(--primary); }
 .iconbtn--sm { width: 30px; height: 30px; border-radius: 8px; font-size: 16px; }
 
 /* --- Строка «подытог + действия» на одной линии --- */
-.line-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; }
+.line-actions { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 2px; }
 .line-actions__text { flex: 1; min-width: 0; }
 
 /* --- Кнопка-индикатор синхронизации (повторная отправка) --- */

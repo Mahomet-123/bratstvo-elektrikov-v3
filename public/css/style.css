@@ -136,6 +136,11 @@ a { color: var(--primary); }
 .card__sub { color: var(--muted); font-size: 12px; }
 .card--clickable { cursor: pointer; transition: transform .08s ease; }
 .card--clickable:active { transform: scale(.985); }
+/* Сводка по деньгам в кабинете клиента */
+.card--sum { background: var(--bg); }
+.kv { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 3px 0; }
+.kv__label { color: var(--muted); font-size: 13px; }
+.kv__value { font-weight: 700; font-size: 15px; }
 
 /* --- Кнопки --- */
 .btn {

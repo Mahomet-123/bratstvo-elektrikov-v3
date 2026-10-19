@@ -52,11 +52,33 @@ window.Offline = (function () {
     count: count,
     flush: function () {
       return all().then(function (items) {
+        if (!items.length) return { sent: 0, dropped: 0, remaining: 0 };
         return Promise.all(items.map(function (it) {
-          return api(it.action, it.params, { queue: false, silent: true })
-            .then(function () { return del(it.id); })
-            .catch(function () { /* оставляем в очереди при повторной ошибке */ });
-        })).then(updateBadge).then(function () { return items.length; });
+          // Важно: мутации шлём именно POST (как apiPost), иначе вложенные
+          // объекты (line/purchase) превратятся в «[object Object]» при GET.
+          return api(it.action, it.params, { method: 'POST', queue: false, silent: true })
+            .then(function () {
+              // Сервер принял — удаляем из очереди.
+              return del(it.id).then(function () { return { ok: true }; });
+            })
+            .catch(function (err) {
+              if (err && err.serverError) {
+                // Логическая ошибка сервера (ok:false) — повтор бессмысленен,
+                // удаляем, чтобы не висели вечно в очереди.
+                return del(it.id).then(function () { return { ok: false, server: true }; });
+              }
+              // Сетевой сбой — оставляем в очереди для повтора.
+              return { ok: false, server: false };
+            });
+        })).then(function (results) {
+          var sent = 0, dropped = 0;
+          results.forEach(function (r) {
+            if (r && r.ok) sent++;
+            else if (r && r.server) dropped++;
+          });
+          var remaining = results.length - sent - dropped;
+          return updateBadge().then(function () { return { sent: sent, dropped: dropped, remaining: remaining }; });
+        });
       });
     },
     updateBadge: updateBadge
@@ -65,6 +87,10 @@ window.Offline = (function () {
 
 window.addEventListener('online', function () {
   if (window.Offline) {
-    Offline.flush().then(function (n) { if (n > 0) U.toast('Синхронизировано операций: ' + n, 'success'); });
+    Offline.flush().then(function (res) {
+      res = res || {};
+      if (res.sent > 0) U.toast('Синхронизировано операций: ' + res.sent, 'success');
+      if (res.dropped > 0) U.toast('Не удалось отправить: ' + res.dropped + ' (ошибка сервера)', 'error');
+    });
   }
 });

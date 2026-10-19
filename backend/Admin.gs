@@ -1,4 +1,15 @@
 // Admin.gs — сводки и аналитика для руководителя.
+
+// Единая формула наценки на материал: max(сумма_покупок * 0.10, 1500) при
+// включённом флаге purchaseMarkup. Используется и в Admin_report, и в
+// Admin_analytics, и в Cabinet_view — единая точка истины.
+function Admin_markupForObject_(purchaseSum, purchaseMarkupFlag) {
+  if (!purchaseMarkupFlag) return 0;
+  var mu = purchaseSum * 0.10;
+  if (mu < 1500) mu = 1500;
+  return Math.round(mu);
+}
+
 function Admin_report() {
   var objs = readRows(CONFIG.SHEET_OBJECTS, 1);
   var byStatus = {};
@@ -10,6 +21,18 @@ function Admin_report() {
   calcs.forEach(function (r) { totalCalc += Number(r.sum) || 0; });
   var purs = readRows(CONFIG.SHEET_PURCHASE, 1);
   purs.forEach(function (r) { totalPur += Number(r.sum) || 0; });
+
+  // Наценка по объектам (та же формула, что в Admin_analytics).
+  var purchaseByObj = {};
+  purs.forEach(function (r) {
+    purchaseByObj[r.objectId] = (purchaseByObj[r.objectId] || 0) + (Number(r.sum) || 0);
+  });
+  var totalMarkup = 0;
+  Object.keys(purchaseByObj).forEach(function (oid) {
+    var o = findRow(CONFIG.SHEET_OBJECTS, 'id', oid);
+    if (!o) return;
+    totalMarkup += Admin_markupForObject_(purchaseByObj[oid], o.purchaseMarkup);
+  });
 
   var visits = readRows(CONFIG.SHEET_VISITS, 1)
     .slice(-10)
@@ -25,7 +48,9 @@ function Admin_report() {
     money: {
       totalCalc: totalCalc,
       totalPurchase: totalPur,
-      profit: totalCalc - totalPur
+      totalMarkup: totalMarkup,
+      // Прибыль = сумма за работу (calc) + наценка на материал.
+      profit: totalCalc + totalMarkup
     },
     lastVisits: visits
   };

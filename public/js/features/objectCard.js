@@ -1056,7 +1056,10 @@ window.ObjectCard = (function () {
       root.appendChild(U.el('div', { class: 'card' }, [
         U.el('div', { class: 'card__title', text: 'Действия руководителя' }),
         o.status !== 'закрыт' ? U.el('button', { class: 'btn btn--danger btn--block', text: 'Закрыть объект', style: { marginBottom: '8px' }, onclick: function () { closeObject(id, refresh); } }) : null,
-        U.el('button', { class: 'btn btn--block', text: '🔗 Создать ссылку для клиента', onclick: function (e) { createCabinet(id, e.currentTarget); } })
+        U.el('div', { class: 'row', style: { gap: '8px' } }, [
+          U.el('button', { class: 'btn btn--block', text: '🔗 Создать ссылку', onclick: function (e) { createCabinet(id, e.currentTarget); } }),
+          U.el('button', { class: 'btn btn--block', text: '👁 Посмотреть как клиент', onclick: function (e) { previewCabinet(id, e.currentTarget); } })
+        ])
       ]));
     }
   }
@@ -1074,12 +1077,20 @@ window.ObjectCard = (function () {
     });
   }
 
+  // ВозвращаетPromise с токеном кабинета: переиспользует активный, если есть.
+  function ensureCabinet(id) {
+    return apiPost('cabinet:token', { token: Store.getToken(), id: id })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Ошибка');
+        return d.cabinet.token;
+      });
+  }
+
   function createCabinet(id, btn) {
     if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
-    apiPost('cabinet:create', { token: Store.getToken(), id: id }).then(function (d) {
-      if (!d.ok) throw new Error(d.error || 'Ошибка');
+    ensureCabinet(id).then(function (token) {
       if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); }
-      var url = location.origin + location.pathname + '#/cabinet/' + d.cabinet.token;
+      var url = location.origin + location.pathname + '#/cabinet/' + token;
       var body = U.el('div', {}, [
         U.el('div', { class: 'modal__title', text: 'Ссылка для клиента' }),
         U.el('p', { class: 'card__sub', text: 'Открывается без входа. Доступна 60 дней.' }),
@@ -1090,7 +1101,18 @@ window.ObjectCard = (function () {
         ])
       ]);
       var m = U.modal(body);
-    }).catch(function (e) { U.toast(e.message, 'error'); });
+    }).catch(function (e) { U.toast(e.message, 'error'); if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); } });
+  }
+
+  // Открывает кабинет клиента от лица клиента (навигация в #/cabinet/<token>).
+  function previewCabinet(id, btn) {
+    if (btn) { btn.disabled = true; btn.classList.add('is-loading'); }
+    ensureCabinet(id).then(function (token) {
+      location.hash = '#/cabinet/' + token;
+    }).catch(function (e) {
+      U.toast(e.message, 'error');
+      if (btn) { btn.disabled = false; btn.classList.remove('is-loading'); }
+    });
   }
 
   return { render: render, reload: reload, bgSync: bgSync, OBJ: OBJ };

@@ -66,8 +66,16 @@ function Router_handle(e) {
       case 'cabinet:create': {
         var u = Router_user(p.token);
         if (!Router_isAdmin(u, p.token)) return json_({ ok: false, error: 'Только руководитель' });
-        var created = Cabinet_create(Number(p.id), u.login, p.ttl || 60);
+        var by = u ? u.login : (p.token || 'system');
+        var created = Cabinet_create(Number(p.id), by, p.ttl || 60);
         return json_({ ok: true, cabinet: created });
+      }
+      case 'cabinet:token': {
+        var u = Router_user(p.token);
+        if (!Router_isAdmin(u, p.token)) return json_({ ok: false, error: 'Только руководитель' });
+        var by = u ? u.login : (p.token || 'system');
+        var tok = Cabinet_tokenFor(Number(p.id), by);
+        return json_({ ok: true, cabinet: tok });
       }
 
       // ---------- По токену ----------

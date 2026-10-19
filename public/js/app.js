@@ -104,8 +104,11 @@
     syncBtn.classList.add('spin');
     var done = function () { setTimeout(function () { syncBtn.classList.remove('spin'); }, 500); };
     if (window.Offline) {
-      Offline.flush().then(function (n) {
-        if (n > 0) U.toast('Отправлено в таблицу: ' + n, 'success');
+      Offline.flush().then(function (res) {
+        res = res || {};
+        if (res.sent > 0) U.toast('Отправлено в таблицу: ' + res.sent, 'success');
+        if (res.dropped > 0) U.toast('Не удалось отправить: ' + res.dropped + ' (ошибка сервера)', 'error');
+        if (res.remaining > 0) U.toast('Не отправлено: ' + res.remaining + ' (нет связи)', 'error');
         // Пакетная загрузка всех данных с сервера
         syncAll().then(function () {
           U.toast('Данные синхронизированы', 'success');

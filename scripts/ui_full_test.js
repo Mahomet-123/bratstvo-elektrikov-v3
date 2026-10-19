@@ -122,15 +122,51 @@ const MOCK_JS = function () {
         DB.cabinets[token] = { object: clone(cd.object), calc: clone(cd.calc), purchases: clone(cd.purchases) };
         return { ok: true, cabinet: { token: token } };
       }
+      case 'cabinet:token': {
+        var ctd = DB.data[p.id]; if (!ctd) return { ok: false, error: 'нет объекта' };
+        // переиспользуем существующий кабинет этого объекта, если есть
+        var existing = null;
+        Object.keys(DB.cabinets).forEach(function (tk) { if (DB.cabinets[tk]._objId == p.id) existing = tk; });
+        if (existing) return { ok: true, cabinet: { token: existing, reused: true } };
+        var ntk = 'CAB' + (++SEQ);
+        DB.cabinets[ntk] = { object: clone(ctd.object), calc: clone(ctd.calc), purchases: clone(ctd.purchases), _objId: p.id };
+        return { ok: true, cabinet: { token: ntk, reused: false } };
+      }
       case 'cabinet': {
         var c = DB.cabinets[p.cabinet]; if (!c) return { ok: false, error: 'Кабинет недоступен' };
-        return { ok: true, cabinet: { object: clone(c.object), calc: clone(c.calc), purchases: clone(c.purchases), total: sumCalc(c.calc) } };
+        var est = sumCalc(c.calc);
+        var psub = (c.purchases || []).reduce(function (s, r) { return s + (Number(r.sum) || 0); }, 0);
+        var mk = c.object && c.object.purchaseMarkup ? Math.max(Math.round(psub * 0.1), 1500) : 0;
+        var mtotal = psub + mk;
+        return { ok: true, cabinet: {
+          object: clone(c.object), calc: clone(c.calc), purchases: clone(c.purchases),
+          total: est + mtotal,
+          breakdown: { estimateTotal: est, purchaseSubtotal: psub, markup: mk, materialTotal: mtotal, grandTotal: est + mtotal }
+        } };
       }
-      case 'status:report': return { ok: true, report: {
-        counts: { objects: DB.objects.length, masters: DB.users.filter(function (u) { return u.role === 'мастер'; }).length, byStatus: { calc: DB.objects.length } },
-        money: { totalCalc: 123456, profit: 65432 },
-        lastVisits: [{ date: new Date().toISOString(), objectId: DB.objects[0] ? DB.objects[0].id : '1', master: 'Иван Иванов', note: 'Смонтировано' }]
-      } };
+      case 'status:report': {
+        var tCalc = 0, tPur = 0;
+        DB.objects.forEach(function (o) {
+          var d = DB.data[o.id];
+          if (!d) return;
+          d.calc.forEach(function (r) { tCalc += Number(r.sum) || 0; });
+          var psum = d.purchases.reduce(function (s, r) { return s + (Number(r.sum) || 0); }, 0);
+          tPur += psum;
+          if (o.purchaseMarkup) tCalc += 0; // заглушка, наценка считается ниже
+        });
+        // наценка по объектам
+        var tMarkup = 0;
+        DB.objects.forEach(function (o) {
+          var d = DB.data[o.id]; if (!d) return;
+          var psum = d.purchases.reduce(function (s, r) { return s + (Number(r.sum) || 0); }, 0);
+          if (o.purchaseMarkup) tMarkup += Math.max(Math.round(psum * 0.1), 1500);
+        });
+        return { ok: true, report: {
+          counts: { objects: DB.objects.length, masters: DB.users.filter(function (u) { return u.role === 'мастер'; }).length, byStatus: { calc: DB.objects.length } },
+          money: { totalCalc: tCalc, totalPurchase: tPur, totalMarkup: tMarkup, profit: tCalc + tMarkup },
+          lastVisits: [{ date: new Date().toISOString(), objectId: DB.objects[0] ? DB.objects[0].id : '1', master: 'Иван Иванов', note: 'Смонтировано' }]
+        } };
+      }
       case 'analytics': return { ok: true, analytics: {
         byMaster: { 'Иван Иванов': { objects: 1, calc: 5000, purchase: 1000, markup: 1500 } },
         bySection: { 'Монтажные': 5000, 'Черновые': 2000 },
@@ -429,7 +465,7 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
     // Кабинет клиента
     if (hasActions) {
-      await clickText(page, '.tab-content .btn--block', 'Создать ссылку для клиента');
+      await clickText(page, '.tab-content .btn--block', 'Создать ссылку');
       await sleep(500);
       var linkModal = await waitFor(page, function () { return Array.prototype.some.call(document.querySelectorAll('.modal .card'), function (c) { return (c.textContent || '').indexOf('#/cabinet/') >= 0; }); }, 3000);
       rec('Кабинет: модалка со ссылкой показана', linkModal);
@@ -438,15 +474,41 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
         var m = (c ? c.textContent : '').match(/#\/cabinet\/([A-Za-z0-9]+)/);
         return m ? m[1] : null;
       });
-      if (cabToken) {
-        await clickText(page, '.modal .btn--ghost', 'Закрыть');
-        await sleep(200);
-        await setHash(page, '#/cabinet/' + cabToken);
-        var cabOk = await waitFor(page, function () { return Array.prototype.some.call(document.querySelectorAll('.cabinet, .card'), function (c) { return (c.textContent || '').indexOf('Братство Электриков') >= 0; }); }, 4000);
-        rec('Кабинет клиента: страница открылась', cabOk);
-        await page.screenshot({ path: path.resolve(__dirname, 'shot_cabinet.png') });
-      } else {
-        rec('Кабинет клиента: получен токен из ссылки', false, 'токен не найден');
+      if (cabToken) { await clickText(page, '.modal .btn--ghost', 'Закрыть'); await sleep(200); }
+
+      // Кнопка «Посмотреть как клиент» — навигация в кабинет
+      var previewClicked = await clickText(page, '.tab-content .btn--block', 'Посмотреть как клиент');
+      rec('Кабинет: кнопка «Посмотреть как клиент» присутствует', previewClicked);
+      await sleep(700);
+      var cabOk = await waitFor(page, function () {
+        return location.hash.indexOf('#/cabinet/') === 0 &&
+          Array.prototype.some.call(document.querySelectorAll('.cabinet, .card'), function (c) { return (c.textContent || '').indexOf('Братство Электриков') >= 0; });
+      }, 4000);
+      rec('Кабинет клиента: открыт через «Посмотреть как клиент»', cabOk);
+      await page.screenshot({ path: path.resolve(__dirname, 'shot_cabinet.png') });
+
+      if (cabOk) {
+        var cabBreak = await page.evaluate(function () {
+          function num(v) { return Number(String(v).replace(/[^\d]/g, '')) || 0; }
+          var labels = Array.prototype.map.call(document.querySelectorAll('.kv__label'), function (e) { return e.textContent.trim(); });
+          var values = Array.prototype.map.call(document.querySelectorAll('.kv__value'), function (e) { return e.textContent.trim(); });
+          var grandEl = document.querySelector('.totals__value.money');
+          return {
+            labels: labels, values: values,
+            grand: grandEl ? num(grandEl.textContent) : 0
+          };
+        });
+        var labelsJoined = cabBreak.labels.join('|');
+        var hasBreak = /Итого по смете/.test(labelsJoined) && /Подытог материалов/.test(labelsJoined) && /Наценка/.test(labelsJoined) && /Итого по материалам/.test(labelsJoined);
+        rec('Кабинет: есть разбивка (смета/материалы/наценка/итог)', hasBreak, JSON.stringify(cabBreak));
+        if (hasBreak && cabBreak.values.length >= 4) {
+          var est = Number(String(cabBreak.values[0]).replace(/[^\d]/g, '')) || 0;
+          var sub = Number(String(cabBreak.values[1]).replace(/[^\d]/g, '')) || 0;
+          var mk = Number(String(cabBreak.values[2]).replace(/[^\d]/g, '')) || 0;
+          var mat = Number(String(cabBreak.values[3]).replace(/[^\d]/g, '')) || 0;
+          rec('Кабинет: материалы — итог = подытог + наценка', mat === sub + mk, 'sub=' + sub + ' mk=' + mk + ' mat=' + mat);
+          rec('Кабинет: Итого к оплате = смета + материалы', cabBreak.grand === est + mat, 'est=' + est + ' mat=' + mat + ' grand=' + cabBreak.grand);
+        }
       }
     }
 
@@ -535,6 +597,49 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
     await sleep(400);
     var priceListOk = await waitFor(page, function () { return Array.prototype.some.call(document.querySelectorAll('.modal__title'), function (t) { return (t.textContent || '').indexOf('Прайс-лист') >= 0; }); });
     rec('Профиль: просмотр прайс-листа', !!priceListOk);
+
+    // Part 4: офлайн-очередь и индикатор синхронизации в шапке
+    // 4а. Кладём 3 операции в очередь (имитация офлайн-мутаций).
+    var firstId4 = await firstObjId();
+    var seeded = await page.evaluate(function (oid) {
+      var tok = (window.Store && Store.getToken) ? Store.getToken() : 'TOK';
+      function q() { return Offline.queue('records:recalc', { token: tok, objectId: oid }); }
+      return q().then(q).then(q).then(function () { return Offline.count(); });
+    }, firstId4);
+    rec('Синхронизация: 3 операции помещены в офлайн-очередь', seeded === 3, 'count=' + seeded);
+
+    // 4б. Индикатор в шапке должен показывать «неотправленные» ДО синхронизации.
+    var pendingShown = await waitFor(page, function () {
+      var b = document.querySelector('#syncBtn');
+      return !!b && b.classList.contains('iconbtn--pending') && /неотправленн/.test(b.title || '');
+    }, 3000);
+    rec('Синхронизация: индикатор показывает «неотправленные» до синхронизации', pendingShown);
+
+    // 4в. Клик по ↻ — очередь очищается, индикатор сбрасывается.
+    var syncClicked = await page.evaluate(function () { var b = document.querySelector('#syncBtn'); if (!b) return false; b.click(); return true; });
+    rec('Синхронизация: кнопка ↻ кликнута', syncClicked);
+    var cleared = await waitFor(page, function () { return Offline.count().then(function (n) { return n === 0; }); }, 6000);
+    rec('Синхронизация: очередь очищена после нажатия ↻', cleared);
+    var badgeCleared = await waitFor(page, function () {
+      var b = document.querySelector('#syncBtn');
+      return !!b && !b.classList.contains('iconbtn--pending') && !/неотправленн/.test(b.title || '');
+    }, 4000);
+    rec('Синхронизация: индикатор сбросил «неотправленные» после синхронизации', badgeCleared);
+
+    // Part 1: формула прибыли в отчёте админки (profit = calc + markup).
+    // Переходим в админку, чтобы гарантированно получить свежий кэш отчёта.
+    await setHash(page, '#/admin');
+    await sleep(900);
+    var profitOk = await page.evaluate(function () {
+      try {
+        var raw = localStorage.getItem('be_report');
+        var rep = JSON.parse(raw || 'null');
+        if (!rep || !rep.report || !rep.report.money) return { ok: false, reason: 'no report', raw: raw ? raw.slice(0, 80) : null };
+        var m = rep.report.money;
+        return { ok: m.profit === m.totalCalc + m.totalMarkup, profit: m.profit, calc: m.totalCalc, markup: m.totalMarkup };
+      } catch (e) { return { ok: false, reason: String(e) }; }
+    });
+    rec('Прибыль: profit = totalCalc + totalMarkup (из отчёта)', profitOk.ok, JSON.stringify(profitOk));
 
     // Ошибки
     rec('Нет ошибок JS на странице (pageerror)', pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 5)));

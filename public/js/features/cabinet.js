@@ -15,6 +15,23 @@ window.Cabinet = {
 function show(app, cab) {
   U.clear(app);
   var o = cab.object || {};
+  // Разбивка по деньгам. Если бэкенд не прислал breakdown (старая версия),
+  // вычисляем минимально необходимое из имеющихся полей.
+  var bd = cab.breakdown || {};
+  var estimateTotal = (typeof bd.estimateTotal === 'number') ? bd.estimateTotal : (cab.total || 0);
+  var purchaseSubtotal = (typeof bd.purchaseSubtotal === 'number') ? bd.purchaseSubtotal : 0;
+  var markup = (typeof bd.markup === 'number') ? bd.markup : 0;
+  var materialTotal = (typeof bd.materialTotal === 'number') ? bd.materialTotal : (purchaseSubtotal + markup);
+  var grandTotal = (typeof bd.grandTotal === 'number') ? bd.grandTotal : (estimateTotal + materialTotal);
+  var hasMarkup = !!o.purchaseMarkup;
+
+  function row(label, value, cls) {
+    return U.el('div', { class: 'kv' }, [
+      U.el('div', { class: 'kv__label', text: label }),
+      U.el('div', { class: 'kv__value money ' + (cls || ''), text: U.money(value) })
+    ]);
+  }
+
   app.appendChild(U.el('div', { class: 'cabinet' }, [
     U.el('div', { class: 'cabinet__brand' }, [
       U.el('div', { class: 'cabinet__brand-logo', text: '⚡' }),
@@ -26,16 +43,25 @@ function show(app, cab) {
       o.client ? U.el('div', { class: 'card__sub', text: 'Клиент: ' + o.client }) : null,
       o.address ? U.el('div', { class: 'card__sub', text: '📍 ' + o.address }) : null
     ]),
+    // Итог к оплате (крупно)
     U.el('div', { class: 'totals' }, [
-      U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Итого к оплате' }), U.el('div', { class: 'totals__value money', text: U.money(cab.total) })]),
+      U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Итого к оплате' }), U.el('div', { class: 'totals__value money', text: U.money(grandTotal) })]),
       U.el('div', { class: 'totals__cell' }, [U.el('div', { class: 'totals__label', text: 'Позиций' }), U.el('div', { class: 'totals__value', text: String((cab.calc || []).length) })])
     ]),
     // --- Смета ---
     U.el('div', { class: 'section-head' }, [U.el('div', { class: 'section-head__title', text: 'Смета' })]),
     (cab.calc && cab.calc.length) ? renderTable(cab.calc) : U.el('div', { class: 'card card__sub', style: { textAlign: 'center' }, text: 'Позиций пока нет' }),
+    U.el('div', { class: 'card card--sum' }, [
+      row('Итого по смете', estimateTotal)
+    ]),
     // --- Закупки (материалы и фото накладных) ---
     U.el('div', { class: 'section-head', style: { marginTop: '14px' } }, [U.el('div', { class: 'section-head__title', text: 'Закупки материалов' })]),
     (cab.purchases && cab.purchases.length) ? renderPurchases(cab.purchases) : U.el('div', { class: 'card card__sub', style: { textAlign: 'center' }, text: 'Закупок пока нет' }),
+    U.el('div', { class: 'card card--sum' }, [
+      row('Подытог материалов', purchaseSubtotal),
+      hasMarkup ? row('Наценка на материал', markup, 'money--pos') : null,
+      row('Итого по материалам', materialTotal)
+    ]),
     U.el('div', { class: 'card__sub', style: { marginTop: '14px', textAlign: 'center' }, text: 'Документ сформирован автоматически. Всего доброго!' })
   ]));
 }

@@ -56,10 +56,12 @@ window.Admin = (function () {
   }
 
   function buildShell(app) {
+    // Кнопка обновления — тот же вид и поведение, что у ↻-синхронизации в шапке
+    // приложения (.iconbtn + .spin вращает саму стрелку, без отдельного кружка).
     ADMIN.refreshBtn = U.el('button', {
-      class: 'btn btn--sm', type: 'button',
+      class: 'iconbtn', type: 'button',
       'aria-label': 'Обновить с сервера', title: 'Обновить с сервера',
-      text: '↻', style: { minWidth: '40px' },
+      text: '↻',
       onclick: manualRefresh
     });
     app.appendChild(U.el('div', { class: 'section-head' }, [
@@ -138,11 +140,12 @@ window.Admin = (function () {
     var b = ADMIN.refreshBtn;
     if (!b) return;
     if (on) {
-      b.classList.add('is-loading');
+      // Вращаем саму стрелку ↻, как кнопка синхронизации в шапке приложения.
+      b.classList.add('spin');
       b.disabled = true;
       b.setAttribute('aria-busy', 'true');
     } else {
-      b.classList.remove('is-loading');
+      b.classList.remove('spin');
       b.disabled = false;
       b.removeAttribute('aria-busy');
     }

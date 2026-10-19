@@ -472,8 +472,9 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
       });
       rec('Админ: офлайн-кэш записан в localStorage', adminCache.report && adminCache.analytics && adminCache.archive && adminCache.users, JSON.stringify(adminCache));
 
-      // Спиннер на кнопке обновления: клик показывает загрузку, после — снимает
-      // Замедлим мок, чтобы спиннер был виден на скриншоте.
+      // Спиннер на кнопке обновления: клик крутит саму стрелку ↻ (класс .spin, как в шапке),
+      // после загрузки вращение снимается.
+      // Замедлим мок, чтобы крутящаяся стрелка была видна на скриншоте.
       await page.evaluate(function () { window.__mockDelay = 1200; });
       var refreshBtnFound = await page.evaluate(function () {
         var b = document.querySelector('button[aria-label="Обновить с сервера"]');
@@ -484,15 +485,15 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
       rec('Админ: кнопка ↻ найдена и кликнута', refreshBtnFound);
       var spinnerShown = await waitFor(page, function () {
         var b = document.querySelector('button[aria-label="Обновить с сервера"]');
-        return b && b.classList.contains('is-loading') && b.disabled;
+        return b && b.classList.contains('spin') && b.disabled;
       }, 800);
-      rec('Админ: ↻ показывает спиннер во время загрузки', spinnerShown);
+      rec('Админ: ↻ крутит стрелку во время загрузки (.spin)', spinnerShown);
       if (spinnerShown) await page.screenshot({ path: path.resolve(__dirname, 'shot_admin_refresh.png') });
       var spinnerGone = await waitFor(page, function () {
         var b = document.querySelector('button[aria-label="Обновить с сервера"]');
-        return b && !b.classList.contains('is-loading') && !b.disabled;
+        return b && !b.classList.contains('spin') && !b.disabled;
       }, 5000);
-      rec('Админ: ↻ снимает спиннер после загрузки', spinnerGone);
+      rec('Админ: ↻ снимает вращение после загрузки', spinnerGone);
       await page.evaluate(function () { window.__mockDelay = 5; });
     }
     if (adminOk) {
